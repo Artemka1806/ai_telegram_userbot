@@ -24,8 +24,9 @@ openai_api_key = getenv("OPENAI_API_KEY")
 
 openai = OpenAI(api_key=openai_api_key)
 
+model = getenv("OPENAI_MODEL", "gpt-4o-mini-2024-07-18")
 
-CONTEXT_MESSAGE_LIMIT = 5
+CONTEXT_MESSAGE_LIMIT = int(getenv("CONTEXT_MESSAGE_LIMIT", 5))
 
 
 async def get_ai_response(prompt):
@@ -125,11 +126,13 @@ async def get_conversation_context(event, limit=CONTEXT_MESSAGE_LIMIT):
 
 @client.on(events.NewMessage(outgoing=True))
 async def handler(event):
-    if event.text.startswith("/gpt") or event.text.startswith("/гпт"):
+    command_prefixes = [".ші", ".аі", ".ai", ".ии", ".gpt", ".гпт"]
+    is_ai_command = any(event.text.startswith(prefix) for prefix in command_prefixes)
+    if is_ai_command:
         async with client.action(event.chat_id, 'typing'):
             command_text = event.text[len("/gpt"):].strip() if event.text.startswith("/gpt") else event.text[len("/гпт"):].strip()
             
-            logging.info(f"Processing GPT command: {command_text[:50]}...")
+            logging.info(f"Processing AI command: {command_text[:50]}...")
             
             reply_data = {}
             if event.reply_to_msg_id:
@@ -171,7 +174,7 @@ async def handler(event):
                 
                 ai_response = await get_ai_response(prompt)
 
-                await thinking_message.edit(f"🤖 **GPT-4o mini**:\n{ai_response}", parse_mode='md')
+                await thinking_message.edit(f"🤖 **{model}**:\n{ai_response}", parse_mode='md')
             else:
                 await event.delete()
                 return
