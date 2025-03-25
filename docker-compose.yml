@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  telegram-userbot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    volumes:
+      - ./.env:/app/.env
+      - ./:/app/
+    environment:
+      - TZ=UTC
+    container_name: telegram-gpt-userbot
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
