@@ -1,8 +1,15 @@
 from os import getenv
-
+import logging
 from telethon import TelegramClient, events
 from openai import OpenAI
 from dotenv import load_dotenv
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 load_dotenv()
 
@@ -17,8 +24,13 @@ openai_api_key = getenv("OPENAI_API_KEY")
 
 openai = OpenAI(api_key=openai_api_key)
 
+
+CONTEXT_MESSAGE_LIMIT = 5
+
+
 async def get_ai_response(prompt):
     """Get response from OpenAI API."""
+    logging.info(f"Getting AI response for prompt: {prompt}")
     try:
         response = openai.chat.completions.create(
             model="gpt-4o",
@@ -39,6 +51,7 @@ async def get_ai_response(prompt):
     except Exception as e:
         return f"Error getting AI response: {str(e)}"
 
+
 async def get_user_info(user):
     """Extract user information in a formatted string."""
     if not user:
@@ -57,6 +70,7 @@ async def get_user_info(user):
     
     return f"{full_name} ({username}, {user_id})"
 
+
 async def get_chat_info(event):
     """Get information about the chat where the message was sent."""
     try:
@@ -67,11 +81,55 @@ async def get_chat_info(event):
     except:
         return None
 
+
+async def get_conversation_context(event, limit=CONTEXT_MESSAGE_LIMIT):
+    """Fetch recent messages from the conversation to provide context."""
+    context = []
+    chat = await event.get_chat()
+    
+    logging.info(f"Fetching conversation context from chat {chat.id}, limit: {limit}")
+    
+    try:
+        messages = []
+        async for message in client.iter_messages(
+            entity=chat,
+            limit=limit + 1,
+            offset_date=event.date,
+            reverse=False
+        ):
+            if message.id != event.id:
+                messages.append(message)
+            
+            if len(messages) >= limit:
+                break
+        
+        messages.reverse()
+        
+        logging.info(f"Retrieved {len(messages)} messages for context")
+        
+        for message in messages:
+            sender = await message.get_sender()
+            sender_info = await get_user_info(sender)
+            
+            message_text = message.text or message.caption or "[Media без тексту]"
+            context_entry = f"{sender_info}: {message_text}"
+            context.append(context_entry)
+            logging.info(f"Added to context: {context_entry[:50]}...")
+        
+        return context
+    except Exception as e:
+        logging.error(f"Error getting conversation context: {str(e)}")
+        logging.exception(e)
+        return []
+
+
 @client.on(events.NewMessage(outgoing=True))
 async def handler(event):
     if event.text.startswith("/gpt") or event.text.startswith("/гпт"):
         async with client.action(event.chat_id, 'typing'):
             command_text = event.text[len("/gpt"):].strip() if event.text.startswith("/gpt") else event.text[len("/гпт"):].strip()
+            
+            logging.info(f"Processing GPT command: {command_text[:50]}...")
             
             reply_data = {}
             if event.reply_to_msg_id:
@@ -88,8 +146,11 @@ async def handler(event):
                 reply_data["user_info"] = await get_user_info(sender)
                 
                 reply_data["chat_info"] = await get_chat_info(reply_message)
-
-            if command_text or reply_data:
+            
+            conversation_history = await get_conversation_context(event)
+            logging.info(f"Got {len(conversation_history)} messages for conversation context")
+            
+            if command_text or reply_data or conversation_history:
                 prompt = "Дай відповідь на запитання:"
                 if command_text:
                     prompt += f"\n{command_text}"
@@ -100,6 +161,12 @@ async def handler(event):
                     if reply_data.get('chat_info'):
                         prompt += f"\n{reply_data.get('chat_info')}"
                 
+                if conversation_history:
+                    prompt += "\n\nПопередня переписка (від старіших до новіших повідомлень):"
+                    for msg in conversation_history:
+                        prompt += f"\n{msg}"
+                
+                logging.info(f"Final prompt length: {len(prompt)} characters")
                 thinking_message = await event.reply("⏳")
                 
                 ai_response = await get_ai_response(prompt)
@@ -109,6 +176,7 @@ async def handler(event):
                 await event.delete()
                 return
 
+
 client.start()
-print("Userbot is running and listening to your messages...")
+logging.info("Userbot is running and listening to your messages...")
 client.run_until_disconnected()
