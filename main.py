@@ -195,7 +195,7 @@ async def handler(event):
                     
                     ai_response = await get_ai_response(prompt, my_info)
 
-                    await thinking_message.edit(ai_response)
+                    await thinking_message.edit(f"**🤖 {model}**\n{ai_response}")
                 else:
                     await event.delete()
                     return
