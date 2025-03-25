@@ -187,14 +187,14 @@ async def handler(event):
                             prompt += f"\n{msg}"
                     
                     if reply_message:
-                        reply_context = await get_conversation_context(reply_message)
-                        if reply_context:
-                            prompt += "\n\nПопередня переписка повідомлення, на яке відповідали (від старіших до новіших):"
-                            for msg in reply_context:
-                                prompt += f"\n{msg}"
-                    
+                        if abs(reply_message.id - event.id) >= 5:
+                            reply_context = await get_conversation_context(reply_message)
+                            if reply_context:
+                                prompt += "\n\nПопередня переписка повідомлення, на яке відповідали (від старіших до новіших):"
+                                for msg in reply_context:
+                                    prompt += f"\n{msg}"
                     logging.info(f"Final prompt length: {len(prompt)} characters")
-                    if reply_message:
+                    if reply_message or not command_text:
                         thinking_message = await reply_message.reply("⏳")
                         await event.delete()
                     else:
