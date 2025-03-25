@@ -194,10 +194,12 @@ async def handler(event):
                                 for msg in reply_context:
                                     prompt += f"\n{msg}"
                     logging.info(f"Final prompt length: {len(prompt)} characters")
-                    if reply_message or not command_text:
+                    if reply_message:
                         thinking_message = await reply_message.reply("⏳")
                         await event.delete()
                     else:
+                        if not command_text:
+                            await event.delete()
                         thinking_message = await event.reply("⏳")
                     
                     ai_response = await get_ai_response(prompt, my_info)
