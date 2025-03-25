@@ -33,7 +33,7 @@ async def get_ai_response(prompt):
     logging.info(f"Getting AI response for prompt: {prompt}")
     try:
         response = openai.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4o-mini-2024-07-18",
             messages=[
                 {"role": "system", "content": """You are a helpful assistant integrated into a Telegram chat.
                  You're responding to users in a messaging environment.
@@ -171,7 +171,7 @@ async def handler(event):
                 
                 ai_response = await get_ai_response(prompt)
 
-                await thinking_message.edit(f"🤖 **GPT-4o**:\n{ai_response}", parse_mode='md')
+                await thinking_message.edit(f"🤖 **GPT-4o mini**:\n{ai_response}", parse_mode='md')
             else:
                 await event.delete()
                 return
