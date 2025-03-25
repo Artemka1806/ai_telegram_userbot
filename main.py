@@ -67,9 +67,8 @@ async def get_user_info(user):
     full_name = " ".join(user_info) if user_info else "Невідоме ім'я"
     
     username = f"@{user.username}" if hasattr(user, 'username') and user.username else "без юзернейму"
-    user_id = f"ID: {user.id}" if hasattr(user, 'id') else ""
     
-    return f"{full_name} ({username}, {user_id})"
+    return f"{full_name} (юзернейм :{username})"
 
 
 async def get_chat_info(event):
@@ -135,6 +134,7 @@ async def handler(event):
             logging.info(f"Processing AI command: {command_text[:50]}...")
             
             reply_data = {}
+            reply_message = None
             if event.reply_to_msg_id:
                 reply_message = await event.get_reply_message()
                 
@@ -170,7 +170,11 @@ async def handler(event):
                         prompt += f"\n{msg}"
                 
                 logging.info(f"Final prompt length: {len(prompt)} characters")
-                thinking_message = await event.reply("⏳")
+                if reply_message:
+                    thinking_message = await reply_message.reply("⏳")
+                    await event.delete()
+                else:
+                    thinking_message = await event.reply("⏳")
                 
                 ai_response = await get_ai_response(prompt)
 
