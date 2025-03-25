@@ -29,21 +29,22 @@ model = getenv("OPENAI_MODEL", "gpt-4o-mini-2024-07-18")
 CONTEXT_MESSAGE_LIMIT = int(getenv("CONTEXT_MESSAGE_LIMIT", 5))
 
 
-async def get_ai_response(prompt):
+async def get_ai_response(prompt, user_info):
     """Get response from OpenAI API."""
     logging.info(f"Getting AI response for prompt: {prompt}")
     try:
         response = openai.chat.completions.create(
             model=model,
             messages=[
-                {"role": "system", "content": """You are a helpful assistant integrated into a Telegram chat.
-                 You're responding to users in a messaging environment.
-                 Keep your responses concise, direct, and conversational.
+                {"role": "system", "content": f"""You are an AI assistant integrated into a Telegram chat, but responding AS THE USER ({user_info}).
+                 You are generating responses that will be sent FROM the user's account to others in the chat.
+                 Keep your responses concise, direct, and conversational in the user's voice.
                  You can use markdown formatting in your responses.
-                 You may reference usernames when appropriate and maintain a friendly, chat-like tone.
-                 Remember that users are having real-time conversations, so be practical and to the point.
-                 When answering questions, consider the casual context of messaging.
-                 Avoid overly technical explanations and use simple language where possible."""},
+                 You should NOT identify yourself as an AI. Act as if you ARE the human user.
+                 Match the user's native language (Ukrainian or Russian if evident from context).
+                 When answering questions, maintain the user's tone and perspective.
+                 Avoid formal or robotic language, and use simple, natural expressions as a human would.
+                 Remember that you are creating responses that the user wants to send in their name."""},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.7,
@@ -139,9 +140,12 @@ async def handler(event):
         
         if is_ai_command:
             async with client.action(event.chat_id, 'typing'):
-                command_text = event_text[4:].strip()  # This handles all command prefixes since they're all 4 chars
+                command_text = event_text[4:].strip()
                 
                 logging.info(f"Processing AI command: {command_text[:50]}...")
+                
+                me = await client.get_me()
+                my_info = await get_user_info(me)
                 
                 reply_data = {}
                 reply_message = None
@@ -167,12 +171,12 @@ async def handler(event):
                 logging.info(f"Got {len(conversation_history)} messages for context")
                 
                 if command_text or reply_data or conversation_history:
-                    prompt = "Дай відповідь на запитання:"
+                    prompt = "Напиши повідомлення від мого імені:"
                     if command_text:
-                        prompt += f"\n{command_text}"
+                        prompt += f"\nЗавдання: {command_text}"
                     
                     if reply_data:
-                        prompt += f"\n\nКонтекст повідомлення: {reply_data.get('text', '')}"
+                        prompt += f"\n\nЦе відповідь на повідомлення: {reply_data.get('text', '')}"
                         prompt += f"\nАвтор повідомлення: {reply_data.get('user_info', '')}"
                         if reply_data.get('chat_info'):
                             prompt += f"\n{reply_data.get('chat_info')}"
@@ -189,9 +193,9 @@ async def handler(event):
                     else:
                         thinking_message = await event.reply("⏳")
                     
-                    ai_response = await get_ai_response(prompt)
+                    ai_response = await get_ai_response(prompt, my_info)
 
-                    await thinking_message.edit(f"🤖 **{model}**:\n{ai_response}", parse_mode='md')
+                    await thinking_message.edit(ai_response)
                 else:
                     await event.delete()
                     return
