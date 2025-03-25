@@ -193,6 +193,8 @@ async def handler(event):
                                 prompt += "\n\nПопередня переписка повідомлення, на яке відповідали (від старіших до новіших):"
                                 for msg in reply_context:
                                     prompt += f"\n{msg}"
+                        else:
+                            logging.info("Reply message is too close to the event message, skipping context.")
                     logging.info(f"Final prompt length: {len(prompt)} characters")
                     if reply_message:
                         thinking_message = await reply_message.reply("⏳")
