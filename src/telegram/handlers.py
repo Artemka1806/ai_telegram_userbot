@@ -123,11 +123,11 @@ async def process_command_images(event, reply_message, contents, images_to_close
 
 async def send_thinking_message(event, reply_message, command_text):
     """Send a thinking indicator message"""
+    if not command_text:
+            await event.delete()
     if reply_message:
         return await reply_message.reply("⏳")
     else:
-        if not command_text:
-            await event.delete()
         return await event.reply("⏳")
 
 async def handle_error(event):
