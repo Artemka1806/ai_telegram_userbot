@@ -87,7 +87,9 @@ async def handle_ai_command(event, client):
                 thinking_message = await send_thinking_message(event, reply_message, command_text)
                 
                 ai_response = await get_ai_response(contents, my_info)
-                await thinking_message.edit(f"**🤖 {Config.GEMINI_MODEL}**\n{ai_response}")
+                
+                # Split and send large responses in chunks
+                await send_chunked_response(ai_response, thinking_message, client, event)
             else:
                 await event.delete()
                 return
@@ -100,6 +102,59 @@ async def handle_ai_command(event, client):
         logger.error(f"Error in AI command handler: {str(e)}")
         logger.exception(e)
         await handle_error(event)
+
+async def send_chunked_response(ai_response, thinking_message, client, original_event):
+    """Split and send large responses in multiple messages if needed"""
+    # Maximum message length (Telegram limit is around 4096, using less to be safe)
+    max_length = 4000
+    header = f"**🤖 {Config.GEMINI_MODEL}**\n"
+    
+    if len(ai_response) <= max_length:
+        # Response fits in one message
+        await thinking_message.edit(f"{header}{ai_response}")
+        return
+        
+    # Response is too large, split into chunks
+    chunks = []
+    current_chunk = ""
+    
+    # Split by paragraphs or sentences if possible
+    paragraphs = ai_response.split("\n\n")
+    
+    for para in paragraphs:
+        # If a single paragraph is longer than max_length, we need to split it further
+        if len(para) > max_length:
+            sentences = para.split(". ")
+            for sentence in sentences:
+                if len(current_chunk + sentence + ". ") > max_length and current_chunk:
+                    chunks.append(current_chunk)
+                    current_chunk = sentence + ". "
+                else:
+                    current_chunk += sentence + ". "
+        else:
+            if len(current_chunk + para + "\n\n") > max_length and current_chunk:
+                chunks.append(current_chunk)
+                current_chunk = para + "\n\n"
+            else:
+                current_chunk += para + "\n\n"
+    
+    # Add the last chunk if it's not empty
+    if current_chunk:
+        chunks.append(current_chunk)
+    
+    # Send chunks as separate messages
+    logger.info(f"Splitting response into {len(chunks)} chunks")
+    
+    # First chunk replaces thinking message
+    first_chunk = f"{header}{chunks[0]}"
+    if len(chunks) > 1:
+        first_chunk += f"\n\n(1/{len(chunks)})"
+    await thinking_message.edit(first_chunk)
+    
+    # Send remaining chunks as new messages
+    for i, chunk in enumerate(chunks[1:], 2):
+        message_text = f"{chunk}\n\n({i}/{len(chunks)})"
+        await original_event.respond(message_text)
 
 async def process_reply_message(reply_message):
     """Process a reply message and extract relevant data"""
