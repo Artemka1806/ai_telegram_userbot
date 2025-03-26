@@ -64,11 +64,15 @@ async def get_conversation_context(event, client, limit=None):
             sender = await message.get_sender()
             sender_info = await get_user_info(sender)
             
+            # Extract message date and format it
+            message_date = getattr(message, 'date', None)
+            date_str = message_date.strftime("[%Y-%m-%d %H:%M:%S]") if message_date else "[невідома дата]"
+            
             text = getattr(message, 'text', '')
             caption = getattr(message, 'caption', '')
             message_text = text or caption or "[Media без тексту]"
             
-            context_entry = f"{sender_info}: {message_text}"
+            context_entry = f"{date_str} {sender_info}: {message_text}"
             context.append(context_entry)
         
         return context

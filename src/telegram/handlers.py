@@ -16,6 +16,29 @@ async def handle_ai_command(event, client):
                 break
                 
         command_text = event.text[prefix_length:].strip()
+        
+        # Check for context limit in command (e.g., ".20" or ". 20")
+        context_limit = Config.CONTEXT_MESSAGE_LIMIT  # Default value
+        
+        if command_text:
+            # Try to extract a number at the beginning
+            parts = command_text.split(maxsplit=1)
+            first_part = parts[0]
+            
+            if first_part.isdigit():
+                try:
+                    context_limit = int(first_part)
+                    if context_limit > 1000:  # Set a reasonable upper limit
+                        context_limit = 1000
+                    elif context_limit < 1:  # Set a reasonable lower limit
+                        context_limit = 1
+                        
+                    # Remove the number from command text
+                    command_text = parts[1] if len(parts) > 1 else ""
+                    logger.info(f"Custom context limit set: {context_limit}")
+                except ValueError:
+                    logger.warning(f"Invalid context limit format: {first_part}, using default")
+        
         logger.info(f"Processing AI command: {command_text[:50]}...")
         
         # Get user info
@@ -33,11 +56,11 @@ async def handle_ai_command(event, client):
             
             # Get context around the reply if needed
             if abs(reply_message.id - event.id) >= 5:
-                reply_context = await get_conversation_context(reply_message, client)
+                reply_context = await get_conversation_context(reply_message, client, context_limit)
                 logger.info(f"Got {len(reply_context)} messages for reply context")
         
-        # Get conversation history
-        conversation_history = await get_conversation_context(event, client)
+        # Get conversation history with the specified context limit
+        conversation_history = await get_conversation_context(event, client, context_limit)
         logger.info(f"Got {len(conversation_history)} messages for context")
         
         # Build prompt and prepare content for AI
