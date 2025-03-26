@@ -1,49 +1,62 @@
 import logging
 from os import getenv
-from openai import OpenAI
+import asyncio
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 
 load_dotenv()
 
-openai_api_key = getenv("OPENAI_API_KEY")
-openai = OpenAI(api_key=openai_api_key)
-model = getenv("OPENAI_MODEL", "gpt-4o-mini-2024-07-18")
+# Configure the Gemini client with API key
+client = genai.Client(api_key=getenv("GEMINI_API_KEY"))
+
+# Get model name from environment variables
+model_name = getenv("GEMINI_MODEL", "gemini-2.0-flash")
 CONTEXT_MESSAGE_LIMIT = int(getenv("CONTEXT_MESSAGE_LIMIT", 5))
 
-async def get_ai_response(prompt, user_info):
-    """Get response from OpenAI Chat Completions API."""
+async def get_ai_response(contents, user_info):
+    """Get response from Google Gemini API."""
     try:
-        if isinstance(prompt, list):
-            logged_text = " ".join(item.get("text", "") for item in prompt if item.get("type") == "text")
-            user_content = prompt
-        else:
-            logged_text = prompt if len(prompt) < 200 else prompt[:200] + "..."
-            user_content = [{"type": "text", "text": prompt}]
-        logging.info(f"Getting AI response for prompt: {logged_text}")
-
-        system_content = (
-            "You are an AI assistant integrated into a Telegram chat, but responding AS THE USER "
-            f"({user_info}). You are generating responses that will be sent FROM the user's account "
-            "to others in the chat. Keep your responses concise, direct, and conversational in the user's voice. "
-            "You can use markdown formatting in your responses. You should NOT identify yourself as an AI. Act as if you ARE the human user. "
-            "Match the user's native language (Ukrainian or Russian if evident from context). "
-            "When answering questions, maintain the user's tone and perspective. Avoid formal or robotic language, "
-            "and use simple, natural expressions as a human would. Remember that you are creating responses that the user wants to send in their name."
+        # System instruction to make the AI respond as the user
+        system_instruction = (
+            f"You are an AI assistant integrated into a Telegram chat. "
+            f"You are responding AS THE USER ({user_info}). "
+            f"You are participating in an ongoing conversation - the provided message history shows recent exchanges. "
+            f"Your responses will be sent FROM the user's account to others. "
+            f"Keep responses concise and in the user's voice. "
+            f"DO NOT identify yourself as an AI. Act as if you ARE the human user. "
+            f"Match the user's language (Ukrainian or Russian if used). "
+            f"Use natural, human-like expressions. "
+            f"Refer to the conversation context when appropriate. "
+            f"Respond directly to the most recent message in the conversation. "
+            f"You are creating responses the user wants to send in their name, continuing their part in this conversation."
         )
-
-        messages = [
-            {"role": "system", "content": [{"type": "text", "text": system_content}]},
-            {"role": "user", "content": user_content}
-        ]
-
-        response = openai.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=0.7,
+        
+        # Log what we're sending
+        logging.info(f"Sending request to Gemini model: {model_name}")
+        if isinstance(contents, list) and len(contents) > 0:
+            if isinstance(contents[0], str):
+                text_preview = contents[0][:500] + "..." if len(contents[0]) > 100 else contents[0]
+                logging.info(f"Text content preview: {text_preview}")
+                logging.info(f"Total content parts: {len(contents)}")
+        
+        # Correct implementation based on the new examples
+        response = client.models.generate_content(
+            model=model_name,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                max_output_tokens=1000,
+                temperature=0.7,
+                top_p=0.95,
+                top_k=40
+            )
         )
-        answer_text = response.choices[0].message.content
-        return answer_text if answer_text else "No response received"
+        
+        return response.text
+        
     except Exception as e:
+        logging.error(f"Error in get_ai_response: {str(e)}")
         return f"Error getting AI response: {str(e)}"
 
 async def get_user_info(user):
@@ -111,7 +124,6 @@ async def get_conversation_context(event, client, limit=CONTEXT_MESSAGE_LIMIT):
             
             context_entry = f"{sender_info}: {message_text}"
             context.append(context_entry)
-            logging.info(f"Added to context: {context_entry[:50]}...")
         
         return context
     except Exception as e:

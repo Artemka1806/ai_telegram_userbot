@@ -1,6 +1,6 @@
 from os import getenv, remove
 import logging
-import base64
+from PIL import Image
 from telethon import TelegramClient, events
 from dotenv import load_dotenv
 
@@ -14,9 +14,9 @@ logging.basicConfig(
 
 load_dotenv()
 
-def encode_image(image_path):
-    with open(image_path, "rb") as image_file:
-        return base64.b64encode(image_file.read()).decode("utf-8")
+def process_image(image_path):
+    """Process image for Gemini API using PIL"""
+    return Image.open(image_path)
 
 api_id = int(getenv("TG_API_ID"))
 api_hash = getenv("TG_API_HASH")
@@ -24,18 +24,25 @@ session_name = getenv("TG_SESSION_NAME")
 client = TelegramClient(session_name, api_id, api_hash)
 
 CONTEXT_MESSAGE_LIMIT = int(getenv("CONTEXT_MESSAGE_LIMIT", 5))
-model = getenv("OPENAI_MODEL", "gpt-4o-mini-2024-07-18")
+model = getenv("GEMINI_MODEL", "gemini-2.0-flash")
 
 @client.on(events.NewMessage(outgoing=True))
 async def handler(event):
     try:
-        command_prefixes = [".ші", ".аі", ".ai", ".ии", ".gpt", ".гпт"]
+        command_prefixes = [".ші", ".аі", ".ai", ".ии", ".gpt", ".гпт", ".gem"]
         event_text = getattr(event, 'text', '')
         is_ai_command = any(event_text.startswith(prefix) for prefix in command_prefixes)
         
         if is_ai_command:
             async with client.action(event.chat_id, 'typing'):
-                command_text = event_text[4:].strip()
+                # Find the prefix that matched and get its length
+                prefix_length = 0
+                for prefix in command_prefixes:
+                    if event_text.startswith(prefix):
+                        prefix_length = len(prefix)
+                        break
+                        
+                command_text = event_text[prefix_length:].strip()
                 logging.info(f"Processing AI command: {command_text[:50]}...")
                 
                 me = await client.get_me()
@@ -62,72 +69,106 @@ async def handler(event):
                 conversation_history = await get_conversation_context(event, client)
                 logging.info(f"Got {len(conversation_history)} messages for context")
                 
-                media_parts = []
+                contents = []
+                
+                # Add text content first
+                prompt_text = "Напиши повідомлення від мого імені:"
+                if command_text:
+                    prompt_text += f"\nЗавдання: {command_text}"
+                
+                if reply_data:
+                    prompt_text += f"\n\nЦе відповідь на повідомлення: {reply_data.get('text', '')}"
+                    prompt_text += f"\nАвтор повідомлення: {reply_data.get('user_info', '')}"
+                    if reply_data.get('chat_info'):
+                        prompt_text += f"\n{reply_data.get('chat_info')}"
+                
+                if conversation_history:
+                    prompt_text += "\n\nПопередня переписка (від старіших до новіших повідомлень):"
+                    for msg in conversation_history:
+                        prompt_text += f"\n{msg}"
+                
+                if reply_message:
+                    if abs(reply_message.id - event.id) >= 5:
+                        reply_context = await get_conversation_context(reply_message, client)
+                        if reply_context:
+                            prompt_text += "\n\nПопередня переписка повідомлення, на яке відповідали (від старіших до новіших):"
+                            for msg in reply_context:
+                                prompt_text += f"\n{msg}"
+                    else:
+                        logging.info("Reply message is too close to the event message, skipping context.")
+                
+                logging.info(f"Final prompt length: {len(prompt_text)} characters")
+                
+                # Add text as first element in contents
+                contents.append(prompt_text)
+                
+                # Track images to close them after API call
+                images_to_close = []
+                temp_files_to_remove = []
+                
+                # Add images if any
                 if getattr(event.message, 'photo', None):
                     file_path = await event.download_media()
                     if file_path:
-                        encoded_img = encode_image(file_path)
-                        remove(file_path)
-                        media_parts.append({
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/jpeg;base64,{encoded_img}"}
-                        })
+                        try:
+                            img = process_image(file_path)
+                            contents.append(img)
+                            images_to_close.append(img)
+                            temp_files_to_remove.append(file_path)
+                        except Exception as e:
+                            logging.error(f"Error processing image: {str(e)}")
+                            try:
+                                remove(file_path)
+                            except:
+                                pass
 
                 if reply_message and getattr(reply_message, 'photo', None):
                     file_path = await reply_message.download_media()
                     if file_path:
-                        encoded_img = encode_image(file_path)
-                        remove(file_path)
-                        media_parts.append({
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/jpeg;base64,{encoded_img}"}
-                        })
+                        try:
+                            img = process_image(file_path)
+                            contents.append(img)
+                            images_to_close.append(img)
+                            temp_files_to_remove.append(file_path)
+                        except Exception as e:
+                            logging.error(f"Error processing reply image: {str(e)}")
+                            try:
+                                remove(file_path)
+                            except:
+                                pass
                 
-                if command_text or reply_data or conversation_history:
-                    prompt_text = "Напиши повідомлення від мого імені:"
-                    if command_text:
-                        prompt_text += f"\nЗавдання: {command_text}"
-                    
-                    if reply_data:
-                        prompt_text += f"\n\nЦе відповідь на повідомлення: {reply_data.get('text', '')}"
-                        prompt_text += f"\nАвтор повідомлення: {reply_data.get('user_info', '')}"
-                        if reply_data.get('chat_info'):
-                            prompt_text += f"\n{reply_data.get('chat_info')}"
-                    
-                    if conversation_history:
-                        prompt_text += "\n\nПопередня переписка (від старіших до новіших повідомлень):"
-                        for msg in conversation_history:
-                            prompt_text += f"\n{msg}"
-                    
-                    if reply_message:
-                        if abs(reply_message.id - event.id) >= 5:
-                            reply_context = await get_conversation_context(reply_message, client)
-                            if reply_context:
-                                prompt_text += "\n\nПопередня переписка повідомлення, на яке відповідали (від старіших до новіших):"
-                                for msg in reply_context:
-                                    prompt_text += f"\n{msg}"
-                        else:
-                            logging.info("Reply message is too close to the event message, skipping context.")
-                    logging.info(f"Final prompt length: {len(prompt_text)} characters")
-                    
-                    if reply_message:
-                        thinking_message = await reply_message.reply("⏳")
-                        await event.delete()
-                    else:
-                        if not command_text:
+                try:
+                    if command_text or reply_data or conversation_history:
+                        if reply_message:
+                            thinking_message = await reply_message.reply("⏳")
                             await event.delete()
-                        thinking_message = await event.reply("⏳")
+                        else:
+                            if not command_text:
+                                await event.delete()
+                            thinking_message = await event.reply("⏳")
+                        
+                        ai_response = await get_ai_response(contents, my_info)
+                        await thinking_message.edit(f"**🤖 {model}**\n{ai_response}")
+                    else:
+                        await event.delete()
+                        return
+                finally:
+                    # Clean up resources
+                    for img in images_to_close:
+                        try:
+                            img.close()
+                        except Exception as e:
+                            logging.warning(f"Error closing image: {str(e)}")
                     
-                    # Build prompt_payload as a list of parts
-                    prompt_payload = [{"type": "text", "text": prompt_text}]
-                    if media_parts:
-                        prompt_payload += media_parts
+                    # Small delay before removing files
+                    import time
+                    time.sleep(0.1)
                     
-                    ai_response = await get_ai_response(prompt_payload, my_info)
-                    await thinking_message.edit(f"**🤖 {model}**\n{ai_response}")
-                else:
-                    await event.delete()
-                    return
+                    for file_path in temp_files_to_remove:
+                        try:
+                            remove(file_path)
+                        except Exception as e:
+                            logging.warning(f"Could not remove file {file_path}: {str(e)}")
     except Exception as e:
         logging.error(f"Error in handler: {str(e)}")
         logging.exception(e)
