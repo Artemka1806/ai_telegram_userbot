@@ -17,20 +17,20 @@ CONTEXT_MESSAGE_LIMIT = int(getenv("CONTEXT_MESSAGE_LIMIT", 5))
 async def get_ai_response(contents, user_info):
     """Get response from Google Gemini API."""
     try:
-        # System instruction to make the AI respond as the user
         system_instruction = (
-            f"You are an AI assistant integrated into a Telegram chat. "
-            f"You are responding AS THE USER ({user_info}). "
-            f"You are participating in an ongoing conversation - the provided message history shows recent exchanges. "
-            f"Your responses will be sent FROM the user's account to others. "
-            f"Keep responses concise and in the user's voice. "
-            f"DO NOT identify yourself as an AI. Act as if you ARE the human user. "
-            f"Match the user's language (Ukrainian or Russian if used). "
-            f"Use natural, human-like expressions. "
-            f"Refer to the conversation context when appropriate. "
-            f"Respond directly to the most recent message in the conversation. "
-            f"You are creating responses the user wants to send in their name, continuing their part in this conversation."
+            "You are an AI assistant integrated into a Telegram chat. "
+            "You are responding AS THE USER ({user_info}). "
+            "You are participating in an ongoing conversation – the provided message history shows recent exchanges. "
+            "Your responses will be sent FROM the user's account to others. "
+            "Keep responses concise and in the user's voice. "
+            "DO NOT identify yourself as an AI. Act as if you ARE the human user. "
+            "Match the user's language (Ukrainian or Russian if used). "
+            "Use natural, human-like expressions. "
+            "Refer to the conversation context when appropriate. "
+            "Respond directly to the most recent message in the conversation. "
+            "You are creating responses the user wants to send in their name, continuing their part in this conversation."
         )
+
         
         # Log what we're sending
         logging.info(f"Sending request to Gemini model: {model_name}")
