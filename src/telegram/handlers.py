@@ -116,34 +116,40 @@ async def send_chunked_response(ai_response, thinking_message, client, original_
         
     # Response is too large, split into chunks
     chunks = []
-    current_chunk = ""
     
-    # Split by paragraphs or sentences if possible
-    paragraphs = ai_response.split("\n\n")
+    # Improved chunking algorithm that preserves content better
+    remaining_text = ai_response
+    while remaining_text:
+        # If remaining text fits in a chunk, add it and break
+        if len(remaining_text) <= max_length:
+            chunks.append(remaining_text)
+            break
+            
+        # Find a good split point (paragraph break, sentence break, or word break)
+        # Look for paragraph break within limits
+        split_pos = remaining_text[:max_length].rfind("\n\n")
+        
+        # If no paragraph break, try sentence break
+        if split_pos == -1 or split_pos < max_length // 2:
+            # Look for sentence break (handling multiple punctuation marks)
+            for punct in [". ", "! ", "? ", ".\n", "!\n", "?\n"]:
+                pos = remaining_text[:max_length].rfind(punct)
+                if pos > max_length // 2:  # Only use if at least halfway through the chunk
+                    split_pos = pos + len(punct) - 1  # Include the punctuation but not the space
+                    break
+                    
+        # If no good sentence break, split at a word boundary
+        if split_pos == -1 or split_pos < max_length // 2:
+            split_pos = remaining_text[:max_length].rfind(" ")
+            if split_pos == -1:  # No spaces found, force split
+                split_pos = max_length - 1
+        
+        # Add chunk and continue with remaining text
+        chunks.append(remaining_text[:split_pos + 1])
+        remaining_text = remaining_text[split_pos + 1:].strip()
     
-    for para in paragraphs:
-        # If a single paragraph is longer than max_length, we need to split it further
-        if len(para) > max_length:
-            sentences = para.split(". ")
-            for sentence in sentences:
-                if len(current_chunk + sentence + ". ") > max_length and current_chunk:
-                    chunks.append(current_chunk)
-                    current_chunk = sentence + ". "
-                else:
-                    current_chunk += sentence + ". "
-        else:
-            if len(current_chunk + para + "\n\n") > max_length and current_chunk:
-                chunks.append(current_chunk)
-                current_chunk = para + "\n\n"
-            else:
-                current_chunk += para + "\n\n"
-    
-    # Add the last chunk if it's not empty
-    if current_chunk:
-        chunks.append(current_chunk)
-    
-    # Send chunks as separate messages
-    logger.info(f"Splitting response into {len(chunks)} chunks")
+    # Log the chunking results
+    logger.info(f"Split response into {len(chunks)} chunks (total length: {len(ai_response)} chars)")
     
     # First chunk replaces thinking message
     first_chunk = f"{header}{chunks[0]}"
@@ -153,8 +159,19 @@ async def send_chunked_response(ai_response, thinking_message, client, original_
     
     # Send remaining chunks as new messages
     for i, chunk in enumerate(chunks[1:], 2):
-        message_text = f"{chunk}\n\n({i}/{len(chunks)})"
-        await original_event.respond(message_text)
+        chunk_text = f"{chunk}\n\n({i}/{len(chunks)})"
+        try:
+            await original_event.respond(chunk_text)
+            # Add a small delay between messages to avoid rate limiting
+            import asyncio
+            await asyncio.sleep(0.5)
+        except Exception as e:
+            logger.error(f"Error sending chunk {i}/{len(chunks)}: {str(e)}")
+            # Try to send error message
+            try:
+                await original_event.respond(f"❌ Помилка при відправці частини відповіді ({i}/{len(chunks)})")
+            except:
+                pass
 
 async def process_reply_message(reply_message):
     """Process a reply message and extract relevant data"""
