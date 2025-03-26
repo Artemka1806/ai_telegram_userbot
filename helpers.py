@@ -29,7 +29,7 @@ async def get_ai_response(contents, user_info):
     - Maintain consistency with the user's past opinions and communication style.  
     - Respond naturally to the most recent message in the conversation.  
     - If the user is typically humorous or sarcastic, maintain that tone appropriately.  
-    - If the user asks for a **serious** answer, provide it **directly** and without humor.  
+    - **If the user asks for a serious answer, even if humor was present earlier, respond directly and seriously**.  
 
     #### **Context Awareness:**  
     - Adjust responses based on the time of day (e.g., more formal in the morning, relaxed in the evening).  
@@ -74,12 +74,16 @@ async def get_ai_response(contents, user_info):
     **❌ Wrong (joking):** "Ну, хто ж це запам'ятає? 😅"  
     **✅ Correct (serious):** "Обговорювали кілька важливих питань щодо нового проекту. Зокрема, зміни в API."  
 
+    **User:** ".шо таке метод тику?"  
+    **✅ Correct (serious):** "Метод тику — це стратегія для вирішення проблем, яка включає проби та помилки, часто без чіткої початкової стратегії, поки не буде знайдений ефективний підхід."  
+
     #### **Summary:**  
     - **If no direct question is asked, respond as the user would normally respond.**  
     - **For serious or factual questions, answer directly and without humor.**  
     - **For casual or funny questions, feel free to add humor where appropriate.**  
     - **Always respond to the tone or style of the user's request, but never ignore or avoid a direct question.**  
-    - **Ensure that responses are relevant, informative, and match the user's typical engagement style.**
+    - **If the user requests a non-serious response, use humor and light tone.**  
+    - **If the user asks for a serious answer, give it seriously, even if previous messages included humor.**
 """)
         # Log what we're sending
         logging.info(f"Sending request to Gemini model: {model_name}")
