@@ -18,7 +18,7 @@ class Config:
     COMMAND_PREFIXES = [".", ".ші", ".аі", ".ai", ".ии", ".gpt", ".гпт", ".gem"]
     
     # AI configuration
-    MAX_OUTPUT_TOKENS = 1000
+    MAX_OUTPUT_TOKENS = 10000000
     TEMPERATURE = 0.7
     TOP_P = 0.95
     TOP_K = 40
