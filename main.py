@@ -29,7 +29,7 @@ model = getenv("GEMINI_MODEL", "gemini-2.0-flash")
 @client.on(events.NewMessage(outgoing=True))
 async def handler(event):
     try:
-        command_prefixes = [".ші", ".аі", ".ai", ".ии", ".gpt", ".гпт", ".gem"]
+        command_prefixes = [".", ".ші", ".аі", ".ai", ".ии", ".gpt", ".гпт", ".gem"]
         event_text = getattr(event, 'text', '')
         is_ai_command = any(event_text.startswith(prefix) for prefix in command_prefixes)
         
@@ -141,7 +141,6 @@ async def handler(event):
                     if command_text or reply_data or conversation_history:
                         if reply_message:
                             thinking_message = await reply_message.reply("⏳")
-                            await event.delete()
                         else:
                             if not command_text:
                                 await event.delete()
