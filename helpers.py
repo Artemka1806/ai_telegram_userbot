@@ -11,26 +11,38 @@ model = getenv("OPENAI_MODEL", "gpt-4o-mini-2024-07-18")
 CONTEXT_MESSAGE_LIMIT = int(getenv("CONTEXT_MESSAGE_LIMIT", 5))
 
 async def get_ai_response(prompt, user_info):
-    """Get response from OpenAI API."""
-    logging.info(f"Getting AI response for prompt: {prompt}")
+    """Get response from OpenAI Chat Completions API."""
     try:
+        if isinstance(prompt, list):
+            logged_text = " ".join(item.get("text", "") for item in prompt if item.get("type") == "text")
+            user_content = prompt
+        else:
+            logged_text = prompt if len(prompt) < 200 else prompt[:200] + "..."
+            user_content = [{"type": "text", "text": prompt}]
+        logging.info(f"Getting AI response for prompt: {logged_text}")
+
+        system_content = (
+            "You are an AI assistant integrated into a Telegram chat, but responding AS THE USER "
+            f"({user_info}). You are generating responses that will be sent FROM the user's account "
+            "to others in the chat. Keep your responses concise, direct, and conversational in the user's voice. "
+            "You can use markdown formatting in your responses. You should NOT identify yourself as an AI. Act as if you ARE the human user. "
+            "Match the user's native language (Ukrainian or Russian if evident from context). "
+            "When answering questions, maintain the user's tone and perspective. Avoid formal or robotic language, "
+            "and use simple, natural expressions as a human would. Remember that you are creating responses that the user wants to send in their name."
+        )
+
+        messages = [
+            {"role": "system", "content": [{"type": "text", "text": system_content}]},
+            {"role": "user", "content": user_content}
+        ]
+
         response = openai.chat.completions.create(
             model=model,
-            messages=[
-                {"role": "system", "content": f"""You are an AI assistant integrated into a Telegram chat, but responding AS THE USER ({user_info}).
-                 You are generating responses that will be sent FROM the user's account to others in the chat.
-                 Keep your responses concise, direct, and conversational in the user's voice.
-                 You can use markdown formatting in your responses.
-                 You should NOT identify yourself as an AI. Act as if you ARE the human user.
-                 Match the user's native language (Ukrainian or Russian if evident from context).
-                 When answering questions, maintain the user's tone and perspective.
-                 Avoid formal or robotic language, and use simple, natural expressions as a human would.
-                 Remember that you are creating responses that the user wants to send in their name."""},
-                {"role": "user", "content": prompt}
-            ],
+            messages=messages,
             temperature=0.7,
         )
-        return getattr(response.choices[0].message, 'content', "No response received")
+        answer_text = response.choices[0].message.content
+        return answer_text if answer_text else "No response received"
     except Exception as e:
         return f"Error getting AI response: {str(e)}"
 
@@ -87,7 +99,6 @@ async def get_conversation_context(event, client, limit=CONTEXT_MESSAGE_LIMIT):
                 break
         
         messages.reverse()
-        
         logging.info(f"Retrieved {len(messages)} messages for context")
         
         for message in messages:
