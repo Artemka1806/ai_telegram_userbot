@@ -198,7 +198,7 @@ async def process_reply_message(reply_message):
     return reply_data
 
 async def process_command_media(event, reply_message, contents, images_to_close, temp_files_to_remove):
-    """Process and add media (images and voice messages) from command and reply to contents"""
+    """Process and add media (images, stickers, and voice messages) from command and reply to contents"""
     # Add images from command message if any
     if getattr(event.message, 'photo', None):
         file_path = await event.download_media()
@@ -208,6 +208,17 @@ async def process_command_media(event, reply_message, contents, images_to_close,
                 contents.append(img)
                 images_to_close.append(img)
                 temp_files_to_remove.append(file_path)
+    
+    # Add stickers from command message
+    if hasattr(event.message, 'sticker') and event.message.sticker:
+        file_path = await event.download_media()
+        if file_path:
+            img = await process_image(file_path)
+            if img:
+                contents.append(img)
+                images_to_close.append(img)
+                temp_files_to_remove.append(file_path)
+                logger.info(f"Sticker processed from command: {file_path}")
     
     # Add voice message from command message if any
     if hasattr(event.message, 'voice') and event.message.voice:
@@ -236,6 +247,17 @@ async def process_command_media(event, reply_message, contents, images_to_close,
                     contents.append(img)
                     images_to_close.append(img)
                     temp_files_to_remove.append(file_path)
+        
+        # Handle stickers in reply
+        if hasattr(reply_message, 'sticker') and reply_message.sticker:
+            file_path = await reply_message.download_media()
+            if file_path:
+                img = await process_image(file_path)
+                if img:
+                    contents.append(img)
+                    images_to_close.append(img)
+                    temp_files_to_remove.append(file_path)
+                    logger.info(f"Sticker processed from reply: {file_path}")
         
         # Handle voice messages in reply
         if hasattr(reply_message, 'voice') and reply_message.voice:
