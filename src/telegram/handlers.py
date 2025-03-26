@@ -4,6 +4,9 @@ from src.ai.client import get_ai_response
 from src.ai.prompts import build_prompt
 from src.telegram.context import get_user_info, get_chat_info, get_conversation_context
 from src.utils.image import process_image, cleanup_resources
+from google import genai
+
+client = genai.Client(api_key=Config.GEMINI_API_KEY)
 
 async def handle_ai_command(event, client):
     """Handle AI command messages"""
@@ -78,8 +81,8 @@ async def handle_ai_command(event, client):
         images_to_close = []
         temp_files_to_remove = []
         
-        # Process images if any
-        await process_command_images(event, reply_message, contents, images_to_close, temp_files_to_remove)
+        # Process images and voice messages if any
+        await process_command_media(event, reply_message, contents, images_to_close, temp_files_to_remove)
         
         try:
             # Send thinking indicator and get AI response
@@ -194,8 +197,8 @@ async def process_reply_message(reply_message):
     
     return reply_data
 
-async def process_command_images(event, reply_message, contents, images_to_close, temp_files_to_remove):
-    """Process and add images from command and reply to contents"""
+async def process_command_media(event, reply_message, contents, images_to_close, temp_files_to_remove):
+    """Process and add media (images and voice messages) from command and reply to contents"""
     # Add images from command message if any
     if getattr(event.message, 'photo', None):
         file_path = await event.download_media()
@@ -205,16 +208,49 @@ async def process_command_images(event, reply_message, contents, images_to_close
                 contents.append(img)
                 images_to_close.append(img)
                 temp_files_to_remove.append(file_path)
-
-    # Add images from reply message if any
-    if reply_message and getattr(reply_message, 'photo', None):
-        file_path = await reply_message.download_media()
+    
+    # Add voice message from command message if any
+    if hasattr(event.message, 'voice') and event.message.voice:
+        file_path = await event.download_media()
         if file_path:
-            img = await process_image(file_path)
-            if img:
-                contents.append(img)
-                images_to_close.append(img)
+            # Upload voice file to Gemini using client.files.upload
+            try:
+                voice_file = client.files.upload(file=file_path)
+                contents.append(voice_file)
+                # No need to close file objects like images, but we still need to clean up the temp file
                 temp_files_to_remove.append(file_path)
+                # Add instruction for voice processing
+                contents.insert(0, "Transcribe and respond to this voice message")
+                logger.info(f"Voice message uploaded from command: {file_path}")
+            except Exception as e:
+                logger.error(f"Error uploading voice file: {str(e)}")
+
+    # Add media from reply message if any
+    if reply_message:
+        # Handle images in reply
+        if getattr(reply_message, 'photo', None):
+            file_path = await reply_message.download_media()
+            if file_path:
+                img = await process_image(file_path)
+                if img:
+                    contents.append(img)
+                    images_to_close.append(img)
+                    temp_files_to_remove.append(file_path)
+        
+        # Handle voice messages in reply
+        if hasattr(reply_message, 'voice') and reply_message.voice:
+            file_path = await reply_message.download_media()
+            if file_path:
+                try:
+                    voice_file = client.files.upload(file=file_path)
+                    contents.append(voice_file)
+                    temp_files_to_remove.append(file_path)
+                    # Add instruction for voice processing if it's not already there
+                    if not any(isinstance(c, str) and "voice message" in c.lower() for c in contents):
+                        contents.insert(0, "Transcribe and respond to this voice message")
+                    logger.info(f"Voice message uploaded from reply: {file_path}")
+                except Exception as e:
+                    logger.error(f"Error uploading reply voice file: {str(e)}")
 
 async def send_thinking_message(event, reply_message, command_text):
     """Send a thinking indicator message"""
