@@ -1,6 +1,8 @@
+import os
+
 from src.utils.logger import logger
 from src.config import Config
-from src.ai.client import get_ai_response
+from src.ai.client import get_ai_response, get_ai_image_response
 from src.ai.prompts import build_prompt
 from src.telegram.context import get_user_info, get_chat_info, get_conversation_context
 from src.utils.image import process_image, cleanup_resources
@@ -19,6 +21,19 @@ async def handle_ai_command(event, client):
                 break
                 
         command_text = event.text[prefix_length:].strip()
+        
+        # Check if this is an image generation request
+        is_image_request = command_text.startswith("img ") or command_text.startswith("image ")
+        
+        if is_image_request:
+            # Remove the "img " or "image " prefix from the command
+            if command_text.startswith("img "):
+                command_text = command_text[4:].strip()
+            else:
+                command_text = command_text[6:].strip()
+            
+            await handle_image_generation(event, client, command_text)
+            return
         
         # Check for context limit in command (e.g., ".20" or ". 20")
         context_limit = Config.CONTEXT_MESSAGE_LIMIT  # Default value
@@ -105,6 +120,77 @@ async def handle_ai_command(event, client):
         logger.error(f"Error in AI command handler: {str(e)}")
         logger.exception(e)
         await handle_error(event)
+
+async def handle_image_generation(event, client, prompt_text):
+    """Handle AI image generation/editing commands"""
+    try:
+        logger.info(f"Processing image generation request: {prompt_text[:50]}...")
+        
+        # Get user info
+        me = await client.get_me()
+        my_info = await get_user_info(me)
+        
+        # Process reply if available to get source image for editing
+        reply_message = None
+        images_to_close = []
+        temp_files_to_remove = []
+        
+        # Send thinking indicator
+        thinking_message = await event.reply("🎨 Generating image...")
+        
+        # Prepare contents for AI
+        contents = [prompt_text]
+        
+        if getattr(event, 'reply_to_msg_id', None):
+            reply_message = await event.get_reply_message()
+            
+            # Check if reply has an image for editing
+            if getattr(reply_message, 'photo', None) or (hasattr(reply_message, 'sticker') and reply_message.sticker):
+                file_path = await reply_message.download_media()
+                if file_path:
+                    img = await process_image(file_path)
+                    if img:
+                        contents.append(img)
+                        images_to_close.append(img)
+                        temp_files_to_remove.append(file_path)
+                        logger.info(f"Source image for editing: {file_path}")
+        
+        try:
+            # Get AI response with image generation
+            result = await get_ai_image_response(contents, my_info)
+            
+            # Send the generated images and text response
+            if result["images"]:
+                for i, image_path in enumerate(result["images"]):
+                    caption = result["text"] if i == 0 and result["text"] else None
+                    await client.send_file(
+                        event.chat_id,
+                        image_path,
+                        caption=caption,
+                        reply_to=event.reply_to_msg_id if i == 0 else None
+                    )
+                # Edit the thinking message to indicate completion
+                await thinking_message.edit("✅ Image generation complete!")
+            else:
+                # No images were generated, send error message
+                await thinking_message.edit(f"❌ {result['text'] or 'Failed to generate image'}")
+                
+        finally:
+            # Clean up resources
+            await cleanup_resources(images_to_close, temp_files_to_remove)
+            
+            # Also clean up generated images after sending
+            for image_path in result.get("images", []):
+                try:
+                    if os.path.exists(image_path):
+                        os.remove(image_path)
+                except Exception as e:
+                    logger.warning(f"Could not remove generated image {image_path}: {str(e)}")
+            
+    except Exception as e:
+        logger.error(f"Error in image generation handler: {str(e)}")
+        logger.exception(e)
+        await event.reply("❌ Error generating image")
 
 async def send_chunked_response(ai_response, thinking_message, client, original_event):
     """Split and send large responses in multiple messages if needed"""

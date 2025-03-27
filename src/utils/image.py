@@ -1,6 +1,11 @@
 import os
 from PIL import Image
 from src.utils.logger import logger
+from src.config import Config
+
+
+os.makedirs(Config.TEMP_DIR, exist_ok=True)
+os.makedirs(Config.TEMP_IMAGES_DIR, exist_ok=True)
 
 async def process_image(file_path):
     """Process an image for Gemini API using PIL"""
