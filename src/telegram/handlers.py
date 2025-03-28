@@ -48,27 +48,23 @@ async def handle_ai_command(event, client):
         await handle_error(event)
             
 def identify_command_mode(text):
-    """Визначає режим команди за префіксом рядка"""
+    """Визначає режим команди за префіксом рядка, використовуючи dict.get()"""
     text = text.strip()
     
     if not text.startswith('.'):
         return None
 
-    modes = (
-        ('.i', "image"),
-        ('.h', "helpful"),
-        ('.t', "transcription"),
-        ('.m', "history"),
-        ('.c', "code"),
-        ('.s', "summary"),
-        ('.?', "help")
-    )
-    
-    for prefix, mode in modes:
-        if text.startswith(prefix):
-            return mode
+    modes = {
+        '.i': "image",
+        '.h': "helpful",
+        '.t': "transcription",
+        '.m': "history",
+        '.c': "code",
+        '.s': "summary",
+        '.?': "help"
+    }
 
-    return "default"
+    return modes.get(text[:2], "default")
 
 
 def extract_command_parameters(text, mode):
