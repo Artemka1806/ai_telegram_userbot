@@ -11,13 +11,37 @@ import uuid
 # Initialize Gemini client
 client = genai.Client(api_key=Config.GEMINI_API_KEY)
 
-async def get_ai_response(contents, user_info):
-    """Get response from Google Gemini API."""
+async def get_default_response(contents, user_info):
+    """Get default response from Google Gemini API."""
+    return await _get_gemini_response(contents, user_info, "default")
+
+async def get_helpful_response(contents, user_info):
+    """Get helpful, detailed response from Google Gemini API."""
+    return await _get_gemini_response(contents, user_info, "helpful")
+
+async def get_transcription_response(contents, user_info):
+    """Get transcription and grammar improvement response."""
+    return await _get_gemini_response(contents, user_info, "transcription")
+
+async def get_code_response(contents, user_info):
+    """Get code-focused response from Google Gemini API."""
+    return await _get_gemini_response(contents, user_info, "code")
+
+async def get_summary_response(contents, user_info):
+    """Get summarization response from Google Gemini API."""
+    return await _get_gemini_response(contents, user_info, "summary")
+
+async def get_history_summary(contents, user_info):
+    """Get chat history summary from Google Gemini API."""
+    return await _get_gemini_response(contents, user_info, "history")
+
+async def _get_gemini_response(contents, user_info, mode="default"):
+    """Base function to get response from Google Gemini API with specified mode."""
     try:
-        system_instruction = get_system_instruction(user_info)
+        system_instruction = get_system_instruction(user_info, mode)
         
         # Log request info
-        logger.info(f"Sending request to Gemini model: {Config.GEMINI_MODEL}")
+        logger.info(f"Sending {mode} mode request to Gemini model: {Config.GEMINI_MODEL}")
         if isinstance(contents, list) and len(contents) > 0:
             if isinstance(contents[0], str):
                 text_preview = contents[0][:100] + "..." if len(contents[0]) > 100 else contents[0]
@@ -40,10 +64,10 @@ async def get_ai_response(contents, user_info):
         return response.text
         
     except Exception as e:
-        logger.error(f"Error in get_ai_response: {str(e)}")
-        return f"Error getting AI response: {str(e)}"
+        logger.error(f"Error in get_gemini_response ({mode} mode): {str(e)}")
+        return f"Error getting AI response in {mode} mode: {str(e)}"
 
-async def get_ai_image_response(contents, user_info):
+async def get_image_response(contents, user_info):
     """Get image generation/editing response from Google Gemini API."""
     try:
         # Log request info
@@ -79,7 +103,7 @@ async def get_ai_image_response(contents, user_info):
                 result["text"] += part.text
             elif part.inline_data is not None:
                 # Save image to temporary file
-                temp_dir = "temp_images"
+                temp_dir = Config.TEMP_IMAGES_DIR
                 os.makedirs(temp_dir, exist_ok=True)
                 
                 # Generate unique filename

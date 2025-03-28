@@ -137,34 +137,70 @@ async def get_conversation_context(event, client, limit=CONTEXT_MESSAGE_LIMIT):
     chat = await event.get_chat()
     
     chat_id = getattr(chat, 'id', 'unknown')
-    logging.info(f"Fetching conversation context from chat {chat_id}, limit: {limit}")
+    logging.info(f"Fetching conversation context from chat {chat_id}, requested limit: {limit}")
     
     try:
         messages = []
-        async for message in client.iter_messages(
-            entity=chat,
-            limit=limit + 1,
-            offset_date=getattr(event, 'date', None),
-            reverse=False
-        ):
-            if message.id != event.id:
-                messages.append(message)
-            
-            if len(messages) >= limit:
-                break
+        # Calculate a reasonable batch size for large requests
+        batch_size = 100  # Telegram API works well with this batch size
+        remaining = limit
+        last_id = 0
         
-        messages.reverse()
-        logging.info(f"Retrieved {len(messages)} messages for context")
+        # Get messages in batches if needed
+        while remaining > 0:
+            current_batch = min(batch_size, remaining)
+            
+            # First batch uses date as offset, subsequent batches use message ID
+            if last_id == 0:
+                batch = await client.get_messages(
+                    entity=chat,
+                    limit=current_batch + 1,  # +1 to account for filtering current message
+                    offset_date=getattr(event, 'date', None),
+                    reverse=True  # Get older messages
+                )
+            else:
+                batch = await client.get_messages(
+                    entity=chat,
+                    limit=current_batch,
+                    max_id=last_id,  # Get messages older than last_id
+                    reverse=True  # Get older messages
+                )
+            
+            # No more messages available
+            if not batch:
+                break
+                
+            # Add messages to our collection, filtering out the triggering message
+            for message in batch:
+                if message.id != event.id:
+                    messages.append(message)
+                    # Track the oldest message ID for pagination
+                    last_id = message.id
+            
+            remaining -= len(batch)
+            
+            # No more messages available
+            if len(batch) < current_batch:
+                break
+                
+            # Avoid rate limiting
+            await asyncio.sleep(0.1)
+        
+        # Process messages (already in chronological order due to reverse=True)
+        logging.info(f"Successfully retrieved {len(messages)} messages for context")
         
         for message in messages:
             sender = await message.get_sender()
             sender_info = await get_user_info(sender)
             
+            # Format message with timestamp for better history context
+            date_str = message.date.strftime("%Y-%m-%d %H:%M:%S") if hasattr(message, 'date') else "Unknown time"
+            
             text = getattr(message, 'text', '')
             caption = getattr(message, 'caption', '')
             message_text = text or caption or "[Media без тексту]"
             
-            context_entry = f"{sender_info}: {message_text}"
+            context_entry = f"[{date_str}] {sender_info}: {message_text}"
             context.append(context_entry)
         
         return context

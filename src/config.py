@@ -16,8 +16,29 @@ class Config:
     
     # App configuration
     CONTEXT_MESSAGE_LIMIT = int(os.getenv("CONTEXT_MESSAGE_LIMIT", 5))
-    COMMAND_PREFIXES = [".", ".ші", ".аі", ".ai", ".ии", ".gpt", ".гпт", ".gem"]
-    IMAGE_COMMAND_PREFIXES = ["img", "image"]
+    
+    # Command prefixes for different modes
+    DEFAULT_PREFIX = "."
+    HELPFUL_PREFIX = ".h"
+    TRANSCRIPTION_PREFIX = ".t"
+    IMAGE_PREFIX = ".i"
+    HISTORY_PREFIX = ".m"
+    CODE_PREFIX = ".c"
+    SUMMARY_PREFIX = ".s"
+    HELP_PREFIX = ".?"
+    
+    # All command prefixes
+    COMMAND_PREFIXES = [
+        DEFAULT_PREFIX, 
+        HELPFUL_PREFIX, 
+        TRANSCRIPTION_PREFIX, 
+        IMAGE_PREFIX, 
+        HISTORY_PREFIX,
+        CODE_PREFIX,
+        SUMMARY_PREFIX,
+        # Legacy prefixes for compatibility
+        ".ші", ".аі", ".ai", ".ии", ".gpt", ".гпт", ".gem"
+    ]
     
     # AI configuration
     MAX_OUTPUT_TOKENS = 10000000
