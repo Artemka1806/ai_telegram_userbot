@@ -11,7 +11,7 @@ services:
       - ./:/app/
     environment:
       - TZ=UTC
-    container_name: telegram-gpt-userbot
+    container_name: ai_telegram_userbot
     logging:
       driver: "json-file"
       options:
