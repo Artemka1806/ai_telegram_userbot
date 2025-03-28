@@ -26,6 +26,7 @@ class Config:
     CODE_PREFIX = ".c"
     SUMMARY_PREFIX = ".s"
     HELP_PREFIX = ".?"
+    GROUNDING_PREFIX = ".g"
     
     # All command prefixes
     COMMAND_PREFIXES = [
@@ -36,6 +37,8 @@ class Config:
         HISTORY_PREFIX,
         CODE_PREFIX,
         SUMMARY_PREFIX,
+        GROUNDING_PREFIX,
+        HELP_PREFIX,
         # Legacy prefixes for compatibility
         ".ші", ".аі", ".ai", ".ии", ".gpt", ".гпт", ".gem"
     ]

@@ -102,8 +102,27 @@ CRITICAL INSTRUCTION: RESPOND IN UKRAINIAN BY DEFAULT.
     - Format the summary in a clear, structured way with appropriate headings and sections.
     - Maintain neutrality while accurately representing the tone and content of the discussion.
     - If there is no history to summarize, respond with "Немає історії чату для підсумовування."
+    """,
+
+   "grounding": """
+    #### **Grounding Mode Guidelines:**
+    - Provide FACTUAL information sourced from the internet using search grounding
+    - Format responses as detailed, fact-checked information
+    - DO NOT include sources or citations directly in the response text
+    - Include sources ONLY at the end of the response in a separate section titled "📚 Джерела інформації:"
+    - Prioritize accuracy and recency of information over opinion or speculation
+    - Include relevant dates, statistics, or specific details that enhance the response
+    - Organize information in a logical structure with clear sections when appropriate
+    - Maintain a formal, informative tone throughout the response
+    - For ambiguous queries, choose the most likely interpretation and answer factually
+    - If specific information cannot be found, state what IS known rather than speculating
+    - Always check multiple sources and prioritize credible information
     """
     }
+    
+    # Add the new instruction to the dictionary if it doesn't exist
+    if "grounding" not in mode_instructions:
+        mode_instructions["grounding"] = mode_instructions["grounding"]
     
     # Combine base instruction with mode-specific instruction
     return base_instruction + mode_instructions.get(mode, mode_instructions["default"])

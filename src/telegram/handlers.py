@@ -1,7 +1,7 @@
 import os
 from src.utils.logger import logger
 from src.config import Config
-from src.ai.client import get_default_response, get_helpful_response, get_transcription_response, get_image_response, get_history_summary, get_summary_response, get_code_response
+from src.ai.client import get_default_response, get_helpful_response , get_transcription_response, get_image_response, get_history_summary, get_summary_response, get_code_response, get_grounded_response
 from src.ai.prompts import build_prompt, get_mode_prompt
 from src.telegram.context import get_user_info, get_chat_info, get_conversation_context
 from src.utils.image import process_image, cleanup_resources
@@ -37,6 +37,9 @@ async def handle_ai_command(event, client):
         elif mode == "help":
             await handle_help_mode(event)
             return
+        elif mode == "grounding":
+            await handle_grounding_mode(event, client, command_text)
+            return
         else:
             # Handle text-based modes (default, helpful, transcription, code, summary)
             await handle_text_mode(event, client, mode, context_limit, command_text)
@@ -61,6 +64,7 @@ def identify_command_mode(text):
         '.m': "history",
         '.c': "code",
         '.s': "summary",
+        '.g': "grounding",
         '.?': "help"
     }
 
@@ -173,7 +177,8 @@ async def handle_text_mode(event, client, mode, context_limit, command_text):
                 "transcription": get_transcription_response,
                 "code": get_code_response,
                 "summary": get_summary_response,
-                "history": get_history_summary
+                "history": get_history_summary,
+                "grounding": get_grounded_response
             }
             
             # Get the appropriate function for the mode
@@ -342,6 +347,61 @@ async def handle_history_mode(event, client, context_limit):
         logger.exception(e)
         await event.reply("❌ Помилка при створенні підсумку історії чату")
 
+async def handle_grounding_mode(event, client, command_text):
+    """Handle search-grounded responses with factual information and citations"""
+    try:
+        # Get user info
+        me = await client.get_me()
+        my_info = await get_user_info(me)
+        
+        # Get the actual search query from command or reply
+        final_query = command_text
+        
+        # If query is empty and there's a reply, use the reply text as the query
+        if not final_query and getattr(event, 'reply_to_msg_id', None):
+            reply_message = await event.get_reply_message()
+            if reply_message:
+                reply_text = getattr(reply_message, 'text', '') or getattr(reply_message, 'caption', '')
+                if reply_text:
+                    final_query = reply_text
+                    logger.info(f"Using reply text as search query: {reply_text[:50]}...")
+        
+        # If still no query, return an error
+        if not final_query:
+            await event.reply("❌ Будь ласка, надайте запит для пошуку інформації.")
+            return
+            
+        logger.info(f"Final search query: {final_query[:100]}...")
+        
+        # Send thinking indicator
+        thinking_message = await event.reply("🔍 Шукаю інформацію...")
+        
+        # Prepare prompt for search
+        prompt = f"""
+### SEARCH QUERY
+{final_query}
+
+### INSTRUCTIONS
+- Find the most accurate and recent information for this query
+- Format your answer in a clear, well-structured way
+- Include relevant facts, figures, and dates if available
+- Mention all sources used at the end of your response
+- Keep your answer concise but comprehensive
+- Use Ukrainian language in your response
+"""
+        
+        # Get grounded response
+        contents = [prompt]
+        result = await get_grounded_response(contents, my_info)
+        
+        # Send the response with sources
+        await send_chunked_response(result, thinking_message, client, event)
+        
+    except Exception as e:
+        logger.error(f"Error in grounding mode handler: {str(e)}")
+        logger.exception(e)
+        await event.reply("❌ Помилка при пошуку інформації")
+
 async def handle_help_mode(event):
     """Display help information about available commands"""
     try:
@@ -353,6 +413,7 @@ async def handle_help_mode(event):
 🔹 **`.c` + текст** - Допомога з кодом та програмуванням
 🔹 **`.i` + текст** - Генерація зображень за описом
 🔹 **`.s` + текст** - Підсумовування вмісту
+🔹 **`.g` + текст** - Пошук інформації з посиланнями на джерела
 🔹 **`.m` + [число]** - Підсумок історії чату з часовими мітками
 🔹 **`.?`** - Показати цю довідку
 
@@ -380,7 +441,8 @@ async def send_thinking_message(event, reply_message, command_text, mode="defaul
         "helpful": "🧠 Готую детальну відповідь...",
         "transcription": "🎤 Дістаю текст...",
         "code": "💻 Пишу код...",
-        "summary": "📋 Підсумовую..."
+        "summary": "📋 Підсумовую...",
+        "grounding": "🔍 Шукаю інформацію..."
     }
     
     indicator = indicators.get(mode, "⏳ Processing...")
