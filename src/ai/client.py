@@ -74,37 +74,11 @@ async def get_grounded_response(contents, user_info):
         import re
         response_text = response.text
         
-        # PHASE 1: Clean all citation markers and source lists from the main response text
-        
+        # PHASE 1: Minimal cleaning - only remove obvious citation markers
         # Remove citation markers like [1], [2]
         response_text = re.sub(r'\[\d+\]', '', response_text)
         
-        # Remove any source sections embedded in the main text
-        response_text = re.sub(r'\n\n?[Сс]ources?:.*?(?=\n\n|$)', '', response_text, flags=re.DOTALL)
-        response_text = re.sub(r'\n\n?[Дд]жерела.*?:.*?(?=\n\n|$)', '', response_text, flags=re.DOTALL)
-        
-        # Remove bullet-point lists of sources
-        bullet_sources_pattern = r'(?:\n\n|\n)(?:\*|\d+\.)\s+(?:[A-ZА-ЯІЇЄа-яіїє][\w\s\-\|]+|(?:https?://)?(?:www\.)?[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+)(?:\s*\n(?:\*|\d+\.)\s+(?:[A-ZА-ЯІЇЄа-яіїє][\w\s\-\|]+|(?:https?://)?(?:www\.)?[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+))*\s*'
-        response_text = re.sub(bullet_sources_pattern, '\n', response_text)
-        
-        # Remove common source section headers
-        common_headers = [
-            r'\n\n[Дд]жерела:.*?\n',
-            r'\n\n[Сс]писок [Дд]жерел:.*?\n',
-            r'\n\n[Іі]нформація [Зз] джерел:.*?\n',
-            r'\n\n[Ss]ources:.*?\n',
-            r'\n\n[Дд]жерела інформації:.*?\n',
-            r'\n\n📚.*?[Дд]жерела.*?:.*?\n'
-        ]
-        
-        for pattern in common_headers:
-            response_text = re.sub(pattern, '\n', response_text)
-        
-        # Remove any existing markdown-formatted sources section
-        response_text = re.sub(r'\n\n📚.*?(?:\n|$).*', '', response_text)
-        
         # PHASE 2: Extract proper source information from grounding metadata
-        
         sources = []
         seen_uris = set()
         
@@ -164,12 +138,12 @@ async def get_grounded_response(contents, user_info):
                 search_query = grounding_metadata.web_search_queries[0]
                 response_text += f"\n\n🔍 **Пошуковий запит:**\n`{search_query}`"
         
-        # Clean up any formatting issues
-        response_text = re.sub(r'\n\s*\*\s*\*', '\n*', response_text)  # Fix nested lists
-        response_text = re.sub(r'\n\s*\*\s+', '\n* ', response_text)   # Fix list formatting
-        response_text = re.sub(r'\n{3,}', '\n\n', response_text)       # Remove excess newlines
-        
         return response_text
+        
+    except Exception as e:
+        logger.error(f"Error in get_grounded_response: {str(e)}")
+        logger.exception(e)
+        return f"❌ Помилка при отриманні відповіді: {str(e)}"
         
     except Exception as e:
         logger.error(f"Error in get_grounded_response: {str(e)}")
