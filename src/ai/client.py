@@ -212,24 +212,34 @@ async def get_image_response(contents, user_info):
             "images": []
         }
         
-        # Extract text and images from response
-        for part in response.candidates[0].content.parts:
-            if part.text is not None:
-                result["text"] += part.text
-            elif part.inline_data is not None:
-                # Save image to temporary file
-                temp_dir = Config.TEMP_IMAGES_DIR
-                os.makedirs(temp_dir, exist_ok=True)
-                
-                # Generate unique filename
-                image_path = os.path.join(temp_dir, f"generated_{uuid.uuid4().hex}.png")
-                
-                # Save the image
-                image = Image.open(BytesIO(part.inline_data.data))
-                image.save(image_path)
-                result["images"].append(image_path)
-                
-                logger.info(f"Image generated and saved to {image_path}")
+        # Check if response has valid structure before processing
+        if (hasattr(response, 'candidates') and 
+            response.candidates and 
+            hasattr(response.candidates[0], 'content') and
+            response.candidates[0].content and
+            hasattr(response.candidates[0].content, 'parts')):
+            
+            # Extract text and images from response
+            for part in response.candidates[0].content.parts:
+                if part.text is not None:
+                    result["text"] += part.text
+                elif part.inline_data is not None:
+                    # Save image to temporary file
+                    temp_dir = Config.TEMP_IMAGES_DIR
+                    os.makedirs(temp_dir, exist_ok=True)
+                    
+                    # Generate unique filename
+                    image_path = os.path.join(temp_dir, f"generated_{uuid.uuid4().hex}.png")
+                    
+                    # Save the image
+                    image = Image.open(BytesIO(part.inline_data.data))
+                    image.save(image_path)
+                    result["images"].append(image_path)
+                    
+                    logger.info(f"Image generated and saved to {image_path}")
+        else:
+            logger.warning("Received incomplete or invalid response structure from Gemini API")
+            result["text"] = "Не вдалося згенерувати зображення: API повернув неповні дані."
         
         return result
         
