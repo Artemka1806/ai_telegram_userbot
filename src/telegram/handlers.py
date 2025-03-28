@@ -48,28 +48,28 @@ async def handle_ai_command(event, client):
         await handle_error(event)
             
 def identify_command_mode(text):
-    """Identify the command mode based on prefix"""
+    """Визначає режим команди за префіксом рядка"""
     text = text.strip()
     
-    if text.startswith(".i ") or text == ".i":
-        return "image"
-    elif text.startswith(".h ") or text == ".h":
-        return "helpful"
-    elif text.startswith(".t ") or text == ".t":
-        return "transcription"
-    elif text.startswith(".hs ") or text == ".hs":
-        return "history"
-    elif text.startswith(".c ") or text == ".c":
-        return "code"
-    elif text.startswith(".s ") or text == ".s":
-        return "summary"
-    elif text.startswith(".? ") or text == ".?":
-        return "help"
-    # Default mode (must be last)
-    elif text.startswith("."):
-        return "default"
-    else:
+    if not text.startswith('.'):
         return None
+
+    modes = (
+        ('.i', "image"),
+        ('.h', "helpful"),
+        ('.t', "transcription"),
+        ('.m', "history"),
+        ('.c', "code"),
+        ('.s', "summary"),
+        ('.?', "help")
+    )
+    
+    for prefix, mode in modes:
+        if text.startswith(prefix):
+            return mode
+
+    return "default"
+
 
 def extract_command_parameters(text, mode):
     """Extract context limit and command text from the input"""
