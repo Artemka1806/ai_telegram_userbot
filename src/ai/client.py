@@ -70,16 +70,44 @@ async def get_grounded_response(contents, user_info):
             )
         )
         
-        # Extract the response text and remove citation markers like [1], [2]
+        # Extract the response text
         import re
-        response_text = re.sub(r'\[\d+\]', '', response.text)
+        response_text = response.text
         
-        # Remove any sources embedded in the main text
-        response_text = re.sub(r'\nSources?:.*?(?=\n\n|$)', '', response_text, flags=re.DOTALL)
+        # PHASE 1: Clean all citation markers and source lists from the main response text
         
-        # Safely extract grounding information and формувати список джерел
+        # Remove citation markers like [1], [2]
+        response_text = re.sub(r'\[\d+\]', '', response_text)
+        
+        # Remove any source sections embedded in the main text
+        response_text = re.sub(r'\n\n?[Сс]ources?:.*?(?=\n\n|$)', '', response_text, flags=re.DOTALL)
+        response_text = re.sub(r'\n\n?[Дд]жерела.*?:.*?(?=\n\n|$)', '', response_text, flags=re.DOTALL)
+        
+        # Remove bullet-point lists of sources
+        bullet_sources_pattern = r'(?:\n\n|\n)(?:\*|\d+\.)\s+(?:[A-ZА-ЯІЇЄа-яіїє][\w\s\-\|]+|(?:https?://)?(?:www\.)?[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+)(?:\s*\n(?:\*|\d+\.)\s+(?:[A-ZА-ЯІЇЄа-яіїє][\w\s\-\|]+|(?:https?://)?(?:www\.)?[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+))*\s*'
+        response_text = re.sub(bullet_sources_pattern, '\n', response_text)
+        
+        # Remove common source section headers
+        common_headers = [
+            r'\n\n[Дд]жерела:.*?\n',
+            r'\n\n[Сс]писок [Дд]жерел:.*?\n',
+            r'\n\n[Іі]нформація [Зз] джерел:.*?\n',
+            r'\n\n[Ss]ources:.*?\n',
+            r'\n\n[Дд]жерела інформації:.*?\n',
+            r'\n\n📚.*?[Дд]жерела.*?:.*?\n'
+        ]
+        
+        for pattern in common_headers:
+            response_text = re.sub(pattern, '\n', response_text)
+        
+        # Remove any existing markdown-formatted sources section
+        response_text = re.sub(r'\n\n📚.*?(?:\n|$).*', '', response_text)
+        
+        # PHASE 2: Extract proper source information from grounding metadata
+        
         sources = []
-        seen_uris = set()  # для уникнення дублювання
+        seen_uris = set()
+        
         if (hasattr(response, 'candidates') and 
             response.candidates and 
             hasattr(response.candidates[0], 'grounding_metadata') and 
@@ -88,41 +116,58 @@ async def get_grounded_response(contents, user_info):
             grounding_metadata = response.candidates[0].grounding_metadata
             
             if hasattr(grounding_metadata, 'grounding_chunks') and grounding_metadata.grounding_chunks:
-                for i, chunk in enumerate(grounding_metadata.grounding_chunks):
+                for chunk in grounding_metadata.grounding_chunks:
                     if hasattr(chunk, 'web') and chunk.web:
-                        uri = chunk.web.uri if hasattr(chunk.web, 'uri') else ""
+                        uri = getattr(chunk.web, 'uri', "")
+                        title = getattr(chunk.web, 'title', "")
+                        
+                        # Skip if URI is missing or already seen
                         if not uri or uri in seen_uris:
                             continue
+                            
                         seen_uris.add(uri)
-                        source_info = {
-                            "title": chunk.web.title if hasattr(chunk.web, 'title') else f"Джерело {i+1}",
-                            "uri": uri
-                        }
-                        sources.append(source_info)
+                        
+                        # Clean and improve title
+                        if not title or title.strip().lower() in ['', 'untitled', 'none']:
+                            # Extract domain name as title if missing
+                            domain_match = re.search(r'https?://(?:www\.)?([^/]+)', uri)
+                            if domain_match:
+                                domain = domain_match.group(1)
+                                title = domain.split('.')[0].capitalize()
+                        else:
+                            # Remove common suffixes from titles
+                            title = re.sub(r'\s*[-–|]\s.*$', '', title)
+                            title = re.sub(r'\s*\|.*$', '', title)
+                            # Clean up whitespace
+                            title = re.sub(r'\s+', ' ', title).strip()
+                        
+                        sources.append({"title": title, "uri": uri})
             
+            # Track search queries used
             if hasattr(grounding_metadata, 'web_search_queries') and grounding_metadata.web_search_queries:
-                logger.info(f"Search queries used: {grounding_metadata.web_search_queries}")
+                search_query = grounding_metadata.web_search_queries[0]
+                logger.info(f"Search query used: {search_query}")
         
-        # Remove any existing sources section if it exists
-        response_text = re.sub(r'\n\n📚.*?(?:\n|$).*', '', response_text)
+        # PHASE 3: Add a clean, formatted sources section
         
-        # Додати список джерел у форматі Markdown
+        # Add the structured sources list if any were found
         if sources:
-            response_text = response_text.rstrip()
             response_text += "\n\n📚 **Джерела інформації:**\n"
             for i, source in enumerate(sources, 1):
                 title = source['title']
-                title = re.sub(r'\.(?:com|org|ua|net|gov).*$', '', title)  # Очистити title від доменних розширень
+                if len(title) > 60:
+                    title = title[:57] + "..."
                 response_text += f"{i}. [{title}]({source['uri']})\n"
+            
+            # Include search query if available
+            if hasattr(grounding_metadata, 'web_search_queries') and grounding_metadata.web_search_queries:
+                search_query = grounding_metadata.web_search_queries[0]
+                response_text += f"\n\n🔍 **Пошуковий запит:**\n`{search_query}`"
         
-        # Add a footer with the search query if available
-        if hasattr(grounding_metadata, 'web_search_queries') and grounding_metadata.web_search_queries:
-            search_query = grounding_metadata.web_search_queries[0]
-            response_text += f"\n\n🔍 **Пошуковий запит:**\n`{search_query}`"
-        
-        # Remove unsupported formatting (e.g., nested lists)
+        # Clean up any formatting issues
         response_text = re.sub(r'\n\s*\*\s*\*', '\n*', response_text)  # Fix nested lists
-        response_text = re.sub(r'\n\s*\*\s+', '\n* ', response_text)  # Ensure proper list formatting
+        response_text = re.sub(r'\n\s*\*\s+', '\n* ', response_text)   # Fix list formatting
+        response_text = re.sub(r'\n{3,}', '\n\n', response_text)       # Remove excess newlines
         
         return response_text
         

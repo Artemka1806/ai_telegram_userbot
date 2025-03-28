@@ -104,19 +104,20 @@ CRITICAL INSTRUCTION: RESPOND IN UKRAINIAN BY DEFAULT.
     - If there is no history to summarize, respond with "Немає історії чату для підсумовування."
     """,
 
-   "grounding": """
+    "grounding": """
     #### **Grounding Mode Guidelines:**
     - Provide FACTUAL information sourced from the internet using search grounding
-    - Format responses as detailed, fact-checked information
-    - DO NOT include sources or citations directly in the response text
-    - Include sources ONLY at the end of the response in a separate section titled "📚 Джерела інформації:"
-    - Prioritize accuracy and recency of information over opinion or speculation
-    - Include relevant dates, statistics, or specific details that enhance the response
-    - Organize information in a logical structure with clear sections when appropriate
+    - Format responses as detailed, fact-checked information in clear paragraphs
+    - DO NOT include any source names, URLs, or reference markers within your main text
+    - DO NOT include any lists of sources or references within your main text
+    - DO NOT mention sources like "According to Wikipedia" or "As stated in..."
+    - DO NOT add citation markers like [1], [2], etc. in your text
+    - NEVER create a bulleted or numbered list of source websites within your answer
+    - Present information clearly without any reference to where it came from
+    - Sources will ONLY appear in the dedicated section at the end
+    - Keep your main text completely free of any source references
     - Maintain a formal, informative tone throughout the response
-    - For ambiguous queries, choose the most likely interpretation and answer factually
-    - If specific information cannot be found, state what IS known rather than speculating
-    - Always check multiple sources and prioritize credible information
+    - The ONLY place sources should appear is in the system-generated sources section
     """
     }
     
