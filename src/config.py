@@ -17,7 +17,7 @@ class Config:
     # App configuration
     CONTEXT_MESSAGE_LIMIT = int(os.getenv("CONTEXT_MESSAGE_LIMIT", 5))
     
-    # Command prefixes for different modes
+       # Command prefixes for different modes
     DEFAULT_PREFIX = "."
     HELPFUL_PREFIX = ".h"
     TRANSCRIPTION_PREFIX = ".t"
@@ -27,6 +27,7 @@ class Config:
     SUMMARY_PREFIX = ".s"
     HELP_PREFIX = ".?"
     GROUNDING_PREFIX = ".g"
+    FILE_PREFIX = ".f"
     
     # All command prefixes
     COMMAND_PREFIXES = [
@@ -39,6 +40,7 @@ class Config:
         SUMMARY_PREFIX,
         GROUNDING_PREFIX,
         HELP_PREFIX,
+        FILE_PREFIX,
         # Legacy prefixes for compatibility
         ".ші", ".аі", ".ai", ".ии", ".gpt", ".гпт", ".gem"
     ]

@@ -1,10 +1,11 @@
 import os
 from src.utils.logger import logger
 from src.config import Config
-from src.ai.client import get_default_response, get_helpful_response , get_transcription_response, get_image_response, get_history_summary, get_summary_response, get_code_response, get_grounded_response
+from src.ai.client import get_default_response, get_helpful_response, get_transcription_response, get_image_response, get_history_summary, get_summary_response, get_code_response, get_grounded_response, get_file_analysis
 from src.ai.prompts import build_prompt, get_mode_prompt
 from src.telegram.context import get_user_info, get_chat_info, get_conversation_context
 from src.utils.image import process_image, cleanup_resources
+from src.utils.file import process_file
 from google import genai
 
 client = genai.Client(api_key=Config.GEMINI_API_KEY)
@@ -37,11 +38,14 @@ async def handle_ai_command(event, client):
         elif mode == "history":
             await handle_history_mode(event, client, context_limit)
             return 
-        elif mode == "help":
-            await handle_help_mode(event)
-            return
         elif mode == "grounding":
             await handle_grounding_mode(event, client, command_text)
+            return
+        elif mode == "file":
+            await handle_file_mode(event, client, command_text)
+            return
+        elif mode == "help":
+            await handle_help_mode(event)
             return
         else:
             # Handle text-based modes (default, helpful, transcription, code, summary)
@@ -71,6 +75,7 @@ def identify_command_mode(text):
         '.c': "code",
         '.s': "summary",
         '.g': "grounding",
+        '.f': "file",
         '.?': "help"
     }
 
@@ -433,6 +438,97 @@ async def handle_grounding_mode(event, client, command_text):
         logger.exception(e)
         await event.reply("❌ Помилка при пошуку інформації")
 
+async def handle_file_mode(event, tg_client, instruction_text):
+    """Handle document file analysis"""
+    try:
+        # Get user info
+        me = await tg_client.get_me()
+        my_info = await get_user_info(me)
+        
+        # Check if there's a document in the message or in a reply
+        file_path = None
+        reply_message = None
+        
+        # First check if the command message has a document
+        if hasattr(event.message, 'document') and event.message.document:
+            file_path = await event.download_media()
+            logger.info(f"Document found in command message: {file_path}")
+        
+        # If no document in command message, check for reply
+        if not file_path and getattr(event, 'reply_to_msg_id', None):
+            reply_message = await event.get_reply_message()
+            
+            # Check if reply has a document
+            if hasattr(reply_message, 'document') and reply_message.document:
+                file_path = await reply_message.download_media()
+                logger.info(f"Document found in reply message: {file_path}")
+                
+                # If no instruction text provided, use any text from reply message as instruction
+                if not instruction_text and (getattr(reply_message, 'text', '') or getattr(reply_message, 'caption', '')):
+                    instruction_text = getattr(reply_message, 'text', '') or getattr(reply_message, 'caption', '')
+                    logger.info(f"Using reply text as instruction: {instruction_text[:50]}...")
+        
+        # If no file found, return an error
+        if not file_path:
+            await event.reply("❌ Будь ласка, додайте файл до аналізу або відповідайте на повідомлення з файлом.")
+            return
+            
+        # Send thinking indicator
+        thinking_message = await event.reply("📄 Аналізую документ...")
+        
+        # Process the file (convert to PDF if needed)
+        pdf_path = await process_file(file_path)
+        
+        if not pdf_path:
+            await thinking_message.edit("❌ Не вдалося обробити файл. Перевірте формат файлу.")
+            return
+            
+        logger.info(f"File processed: {pdf_path}")
+        
+        try:
+            # Use the global Gemini client, not the telegram client parameter
+            gemini_file = client.files.upload(file=pdf_path)
+            logger.info(f"File uploaded to Gemini")
+            
+            # Use default instruction if none provided
+            if not instruction_text:
+                instruction_text = "Проаналізуй цей документ і надай детальний звіт про його зміст, структуру та ключові моменти."
+                
+            # Prepare contents list with instruction
+            contents = [instruction_text]
+            
+            # Get AI analysis
+            ai_response = await get_file_analysis(contents, my_info, gemini_file)
+            
+            # Format and send response
+            if ai_response:
+                # Add file name to response header
+                file_name = os.path.basename(file_path)
+                header = f"📄 **Аналіз документа:** `{file_name}`\n\n"
+                ai_response = header + ai_response
+                
+                # Send chunked response
+                await send_chunked_response(ai_response, thinking_message, tg_client, event)
+            else:
+                await thinking_message.edit("❌ Не вдалося отримати аналіз документу.")
+                
+        finally:
+            # Clean up files
+            try:
+                if file_path and os.path.exists(file_path):
+                    os.remove(file_path)
+                    logger.info(f"Removed original file: {file_path}")
+                    
+                if pdf_path and os.path.exists(pdf_path) and pdf_path != file_path:
+                    os.remove(pdf_path)
+                    logger.info(f"Removed processed PDF: {pdf_path}")
+            except Exception as e:
+                logger.warning(f"Error cleaning up files: {str(e)}")
+    except Exception as e:
+        logger.error(f"Error in file analysis handler: {str(e)}")
+        logger.exception(e)
+        await event.reply("❌ Помилка при аналізі файлу.")
+
 async def handle_help_mode(event):
     """Display help information about available commands"""
     try:
@@ -445,6 +541,7 @@ async def handle_help_mode(event):
 🔹 **`.i` + текст** - Генерація зображень за описом
 🔹 **`.s` + текст** - Підсумовування вмісту
 🔹 **`.g` + текст** - Пошук інформації з посиланнями на джерела
+🔹 **`.f` + текст** - Аналіз файлів документів (PDF, Word, Excel, PowerPoint, Text)
 🔹 **`.m` + [число]** - Підсумок історії чату з часовими мітками
 🔹 **`.?`** - Показати цю довідку
 
@@ -453,6 +550,7 @@ async def handle_help_mode(event):
 - Додавайте число після команди для збільшення контексту (напр. `.h 10 текст`)
 - Додавайте зображення до запитів для аналізу
 - Відповідайте на голосові повідомлення для транскрибування
+- Відповідайте на документи для аналізу вмісту
 
 🔄 **Модель:** {model}
 """

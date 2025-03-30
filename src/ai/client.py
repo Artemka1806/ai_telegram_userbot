@@ -295,3 +295,57 @@ async def get_image_response(contents, user_info, enhance_prompt=False):
         logger.error(f"Error in get_ai_image_response: {str(e)}")
         logger.exception(e)
         return {"text": f"Error generating image: {str(e)}", "images": []}
+    
+async def get_file_analysis(contents, user_info, file_obj=None):
+    """Analyze a file using Google Gemini API"""
+    try:
+        system_instruction = get_system_instruction(user_info, "helpful")
+        
+        # Log request info
+        logger.info(f"Sending file analysis request to Gemini model: {Config.GEMINI_MODEL}")
+        
+        # Prepare final contents list
+        final_contents = []
+        
+        # Add file to contents if provided
+        if file_obj:
+            final_contents.append(file_obj)
+            logger.info(f"Added file to analysis request")
+        
+        # Add text prompt (should be the instruction on what to do with the file)
+        if isinstance(contents, list) and contents and isinstance(contents[0], str):
+            prompt = contents[0]
+            # If prompt is empty or too generic, use a default one
+            if not prompt or prompt.strip() in ["", "analyze", "analyze this"]:
+                prompt = """Analyze this document thoroughly and provide a detailed summary including:
+1. Main topics and key points
+2. Important facts and figures
+3. Structure and organization
+4. Conclusions or recommendations (if any)
+5. Any notable issues or inconsistencies 
+
+Present your analysis in a well-structured format with clear sections."""
+
+            final_contents.append(prompt)
+            text_preview = prompt[:100] + "..." if len(prompt) > 100 else prompt
+            logger.info(f"Analysis instruction: {text_preview}")
+
+        # Generate content
+        response = client.models.generate_content(
+            model=Config.GEMINI_MODEL,
+            contents=final_contents,
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                max_output_tokens=Config.MAX_OUTPUT_TOKENS,
+                temperature=Config.TEMPERATURE,
+                top_p=Config.TOP_P,
+                top_k=Config.TOP_K
+            )
+        )
+        
+        return response.text
+        
+    except Exception as e:
+        logger.error(f"Error in get_file_analysis: {str(e)}")
+        logger.exception(e)
+        return f"❌ Помилка при аналізі файлу: {str(e)}"
