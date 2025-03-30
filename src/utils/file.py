@@ -31,9 +31,51 @@ async def convert_to_pdf(input_path, output_path=None):
             return output_path
             
         elif file_ext in ['.docx', '.doc']:
-            # For Word documents, use docx2pdf
-            from docx2pdf import convert
-            convert(input_path, output_path)
+            # For Word documents, use LibreOffice (Linux compatible) or docx2pdf (Windows)
+            import platform
+            
+            if platform.system() == 'Windows':
+                # Continue using docx2pdf on Windows
+                from docx2pdf import convert
+                convert(input_path, output_path)
+            else:
+                # Use LibreOffice on Linux/Mac
+                import subprocess
+                
+                # Ensure directory exists
+                os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+                
+                # Convert using LibreOffice headless mode
+                cmd = [
+                    'libreoffice', '--headless', '--convert-to', 'pdf',
+                    '--outdir', os.path.dirname(os.path.abspath(output_path)),
+                    input_path
+                ]
+                
+                try:
+                    process = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
+                    
+                    if process.returncode != 0:
+                        logger.error(f"LibreOffice conversion failed: {process.stderr.decode('utf-8', errors='ignore')}")
+                        raise Exception("LibreOffice conversion failed")
+                    
+                    # LibreOffice creates PDF with original name in output dir
+                    temp_output = os.path.join(
+                        os.path.dirname(os.path.abspath(output_path)),
+                        f"{os.path.splitext(os.path.basename(input_path))[0]}.pdf"
+                    )
+                    
+                    # Move to desired output path if different
+                    if os.path.abspath(temp_output) != os.path.abspath(output_path):
+                        shutil.move(temp_output, output_path)
+                    
+                except FileNotFoundError:
+                    logger.error("LibreOffice not found. Please install LibreOffice.")
+                    raise Exception("LibreOffice not installed")
+                except subprocess.TimeoutExpired:
+                    logger.error("LibreOffice conversion timed out")
+                    raise Exception("Conversion timed out")
+                
             logger.info(f"Converted Word document to PDF: {output_path}")
             return output_path
             
