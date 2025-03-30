@@ -182,16 +182,64 @@ async def _get_gemini_response(contents, user_info, mode="default"):
         logger.error(f"Error in get_gemini_response ({mode} mode): {str(e)}")
         return f"Error getting AI response in {mode} mode: {str(e)}"
 
-async def get_image_response(contents, user_info):
+async def refine_image_prompt(prompt, user_info):
+    """Refine and enhance the image prompt to improve generation quality and translate to English."""
+    try:
+        refinement_instruction = f"""
+Improve this prompt to generate the best possible image. Make it clear, detailed, and effective. 
+Then, translate it into English. 
+Provide only the final, optimized prompt without explanations.
+Ensure all details are expressed exclusively in English.
+Answer only with the optimized prompt in English.
+Prompt:
+"{prompt}"
+"""
+        # Log refinement request
+        logger.info(f"Refining image prompt: {prompt[:50]}...")
+        
+        # Generate refined prompt using the text model
+        response = client.models.generate_content(
+            model=Config.GEMINI_MODEL,
+            contents=[refinement_instruction],
+            config=types.GenerateContentConfig(
+                system_instruction=get_system_instruction(user_info, "default"),
+                max_output_tokens=1000,
+                temperature=0.4,  # Lower temperature for more focused refinement
+            )
+        )
+        
+        refined_prompt = response.text.strip()
+        logger.info(f"Original prompt: {prompt[:50]}...")
+        logger.info(f"Refined prompt: {refined_prompt[:50]}...")
+        
+        return refined_prompt
+    except Exception as e:
+        logger.error(f"Error refining image prompt: {str(e)}")
+        logger.exception(e)
+        # Return the original prompt if refinement fails
+        return prompt
+
+async def get_image_response(contents, user_info, enhance_prompt=False):
     """Get image generation/editing response from Google Gemini API."""
     try:
+        # Extract the text prompt from contents
+        text_prompt = ""
+        if isinstance(contents, list) and len(contents) > 0 and isinstance(contents[0], str):
+            text_prompt = contents[0]
+        
+        # Refine the prompt only when enhance_prompt is True
+        if enhance_prompt:
+            refined_prompt = await refine_image_prompt(text_prompt, user_info)
+            
+            # Replace the original prompt with the refined one
+            if isinstance(contents, list) and len(contents) > 0 and isinstance(contents[0], str):
+                contents[0] = refined_prompt
+            
+            logger.info(f"Enhanced prompt: {refined_prompt[:100]}...")
+        
         # Log request info
         logger.info(f"Sending image generation request to Gemini model: {Config.GEMINI_IMAGE_MODEL}")
-        if isinstance(contents, list) and len(contents) > 0:
-            if isinstance(contents[0], str):
-                text_preview = contents[0][:100] + "..." if len(contents[0]) > 100 else contents[0]
-                logger.info(f"Text prompt preview: {text_preview}")
-                logger.info(f"Total content parts: {len(contents)}")
+        logger.info(f"Total content parts: {len(contents)}")
         
         # Generate content with image modality using the dedicated image model
         response = client.models.generate_content(

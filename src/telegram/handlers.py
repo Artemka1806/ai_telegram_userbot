@@ -29,7 +29,10 @@ async def handle_ai_command(event, client):
         logger.info(f"Extracted command text: '{command_text}'")
         # Process command based on mode
         if mode == "image":
-            await handle_image_mode(event, client, command_text)
+            await handle_image_mode(event, client, command_text, enhance_prompt=False)
+            return
+        elif mode == "image_enhanced":
+            await handle_image_mode(event, client, command_text, enhance_prompt=True)
             return
         elif mode == "history":
             await handle_history_mode(event, client, context_limit)
@@ -57,6 +60,9 @@ def identify_command_mode(text):
     if not text.startswith('.'):
         return None
 
+    if text.startswith('.i+'):
+        return "image_enhanced"
+        
     modes = {
         '.i': "image",
         '.h': "helpful",
@@ -76,6 +82,12 @@ def extract_command_parameters(text, mode):
     # Remove the mode prefix
     if mode == "default":
         text = text[1:].strip()  # Remove "."
+    elif mode == "image_enhanced":
+        # Handle special case for .i+ command
+        if len(text) > 3 and text[3] == ' ':
+            text = text[4:].strip()  # Remove ".i+ "
+        else:
+            text = ""  # Just the command with no parameters
     else:
         # Handle case where there's only the prefix (like ".c" with no additional text)
         if len(text) > 2 and text[2] == ' ':
@@ -197,7 +209,7 @@ async def handle_text_mode(event, client, mode, context_limit, command_text):
         # Clean up resources
         await cleanup_resources(images_to_close, temp_files_to_remove)
 
-async def handle_image_mode(event, client, prompt_text):
+async def handle_image_mode(event, client, prompt_text, enhance_prompt=False):
     """Handle AI image generation/editing mode"""
     try:
         # Get user info
@@ -221,7 +233,9 @@ async def handle_image_mode(event, client, prompt_text):
             await event.reply("❌ Будь ласка, надайте текст промпту для генерації зображення.")
             return
             
-        logger.info(f"Final image generation prompt: {final_prompt[:100]}...")
+        # Store the original prompt before refinement
+        original_prompt = final_prompt
+        logger.info(f"Original image generation prompt: {original_prompt[:100]}...")
         
         # Send thinking indicator
         thinking_message = await event.reply("🎨 Генерую зображення...")
@@ -250,17 +264,34 @@ async def handle_image_mode(event, client, prompt_text):
         
         try:
             # Get AI response with image generation
-            result = await get_image_response(contents, my_info)
+            result = await get_image_response(contents, my_info, enhance_prompt)
+            
+            # The refined prompt is the first element of contents after refinement
+            refined_prompt = contents[0] if (enhance_prompt and contents) else original_prompt
             
             # Send the generated images and text response
             if result["images"]:
                 for i, image_path in enumerate(result["images"]):
-                    caption = result["text"] if i == 0 and result["text"] else None
+                    # Create a caption with both original and refined prompts
+                    caption = ""
+                    if i == 0:  # Only add this to the first image if multiple are generated
+                        caption = f"🖼 <b>Згенероване зображення</b>\n\n"
+                        
+                        if enhance_prompt:
+                            caption += f"📝 <b>Оригінальний запит:</b>\n<i>{original_prompt}</i>\n\n"
+                            caption += f"✨ <b>Покращений запит:</b>\n<i>{refined_prompt}</i>\n\n"
+                        else:
+                            caption += f"📝 <b>Запит:</b>\n<i>{original_prompt}</i>\n\n"
+                            
+                        if result["text"]:
+                            caption += f"<b>💬 Коментар AI:</b>\n{result['text']}"
+                    
                     await client.send_file(
                         event.chat_id,
                         image_path,
                         caption=caption,
-                        reply_to=event.reply_to_msg_id if i == 0 else None
+                        reply_to=event.reply_to_msg_id if i == 0 else None,
+                        parse_mode="html"
                     )
                 # Edit the thinking message to indicate completion
                 await thinking_message.edit("✅ Генерація зображення завершена!")
