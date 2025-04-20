@@ -175,3 +175,5 @@ cython_debug/
 
 *.session
 *.session-journal
+
+temp
