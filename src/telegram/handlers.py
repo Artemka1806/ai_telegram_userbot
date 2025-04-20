@@ -156,6 +156,7 @@ User: {sender_info if isinstance(sender_info, str) else sender_info.get('name', 
         contents = [prompt_text]
         images_to_close = []
         temp_files_to_remove = []
+        file_processed = False
         
         # Process message media if any
         if getattr(event.message, 'photo', None):
@@ -167,12 +168,38 @@ User: {sender_info if isinstance(sender_info, str) else sender_info.get('name', 
                     images_to_close.append(img)
                     temp_files_to_remove.append(file_path)
                     logger.info(f"Image processed for auto-response")
+                    
+        # Process document if any
+        if hasattr(event.message, 'document') and event.message.document:
+            file_path = await event.download_media()
+            if file_path:
+                logger.info(f"Document found in auto-response message: {file_path}")
+                
+                # Process the file (convert to PDF if needed)
+                pdf_path = await process_file(file_path)
+                
+                if pdf_path:
+                    try:
+                        # Upload file to Gemini
+                        gemini_file = client.files.upload(file=pdf_path)
+                        contents.append(gemini_file)
+                        temp_files_to_remove.append(file_path)
+                        if pdf_path != file_path:
+                            temp_files_to_remove.append(pdf_path)
+                        file_processed = True
+                        logger.info(f"Document processed for auto-response: {pdf_path}")
+                    except Exception as e:
+                        logger.error(f"Error uploading document file: {str(e)}")
+                        
         await asyncio.sleep(0.5)
         try:
             # Send typing indication
             async with client.action(event.chat_id, 'typing'):
-                # Get AI response
-                ai_response = await get_default_response(contents, my_info)
+                # Get AI response - use file analysis for documents, default for other content
+                if file_processed:
+                    ai_response = await get_file_analysis(contents, my_info)
+                else:
+                    ai_response = await get_default_response(contents, my_info)
                 
                 # Send the response
                 if ai_response.strip():
