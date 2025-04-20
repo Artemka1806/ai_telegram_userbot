@@ -56,6 +56,101 @@ async def handle_ai_command(event, client):
         logger.error(f"Error in AI command handler: {str(e)}")
         logger.exception(e)
         await handle_error(event)
+
+async def handle_ai_auto_response(event, client):
+    """Handle automatic AI responses for enabled chats"""
+    try:
+        # Get user info
+        me = await client.get_me()
+        my_info = await get_user_info(me)
+        
+        # Get conversation context with the auto-response context limit
+        # Include the current message in the context
+        context_limit = Config.AUTO_RESPONSE_CONTEXT_LIMIT
+        conversation_history = await get_conversation_context(event, client, context_limit, include_current_message=True)
+        
+        # Get sender and chat info
+        sender = await event.get_sender()
+        sender_info = await get_user_info(sender)
+        chat = await event.get_chat()
+        
+        # Get chat title or default to "Private Chat"
+        chat_title = getattr(chat, 'title', None) or 'Private Chat'
+        
+        # Get message text from current message
+        message_text = getattr(event.message, 'text', '') or getattr(event.message, 'caption', '')
+        
+        # Build prompt for auto-response
+        prompt_text = f"""### SYSTEM INSTRUCTION
+You are an AI assistant helping the user in a chat. Make sure to respond directly to the user's most recent message.
+Respond in Ukrainian language unless the user asks in another language.
+Be helpful, clear and concise. Don't make up information.
+If asked a math question, calculate the answer step by step.
+
+### CHAT CONTEXT
+Chat: {chat_title}
+User: {sender_info if isinstance(sender_info, str) else sender_info.get('name', 'Unknown User')}
+
+### CHAT HISTORY ({len(conversation_history)} messages)
+"""
+
+        # Add conversation history
+        if conversation_history:
+            for i, msg in enumerate(conversation_history):
+                if isinstance(msg, dict):
+                    author = msg.get('author', {}).get('name', 'Unknown')
+                    text = msg.get('text', '')
+                    
+                    # Mark the current message that needs a response
+                    if msg.get('is_current_message', False):
+                        prompt_text += f"{author}: {text} [THIS IS THE MESSAGE YOU NEED TO RESPOND TO]\n\n"
+                    else:
+                        prompt_text += f"{author}: {text}\n\n"
+        
+        # Add explicit instruction to respond to the marked message
+        prompt_text += f"""
+### IMPORTANT
+- Respond directly to the message marked as [THIS IS THE MESSAGE YOU NEED TO RESPOND TO]
+- Answer questions completely and precisely
+- For math questions, calculate the actual answer (e.g., 2+4=6)
+- DO NOT respond with model information unless specifically asked about the model
+"""
+        
+        # Prepare contents for AI (text and images)
+        contents = [prompt_text]
+        images_to_close = []
+        temp_files_to_remove = []
+        
+        # Process message media if any
+        if getattr(event.message, 'photo', None):
+            file_path = await event.download_media()
+            if file_path:
+                img = await process_image(file_path)
+                if img:
+                    contents.append(img)
+                    images_to_close.append(img)
+                    temp_files_to_remove.append(file_path)
+                    logger.info(f"Image processed for auto-response")
+        
+        try:
+            # Send typing indication
+            async with client.action(event.chat_id, 'typing'):
+                # Get AI response
+                ai_response = await get_default_response(contents, my_info)
+                
+                # Send the response
+                if ai_response.strip():
+                    await event.reply(f"**🤖 {Config.GEMINI_MODEL}**\n{ai_response}")
+                else:
+                    logger.warning("Empty AI auto-response received")
+                
+        finally:
+            # Clean up resources
+            await cleanup_resources(images_to_close, temp_files_to_remove)
+            
+    except Exception as e:
+        logger.error(f"Error in AI auto-response handler: {str(e)}")
+        logger.exception(e)
             
 def identify_command_mode(text):
     """Визначає режим команди за префіксом рядка, використовуючи dict.get()"""
@@ -623,7 +718,7 @@ async def process_reply_message(reply_message):
         reply_data["user_info"] = await get_user_info(sender)
         reply_data["chat_info"] = await get_chat_info(reply_message)
         reply_data["message_id"] = reply_message.id
-        reply_data["date"] = reply_message.date.strftime("%Y-%m-%d %H:%M:%S") if hasattr(reply_message, 'date') else "Unknown"
+        reply_data["date"] = reply_message.date.strftime("%Y-%м-%d %H:%М:%S") if hasattr(reply_message, 'date') else "Unknown"
     
     return reply_data
 

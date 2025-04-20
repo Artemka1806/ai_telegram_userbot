@@ -33,13 +33,19 @@ async def get_chat_info(event):
         logger.error(f"Error getting chat info: {str(e)}")
         return None
 
-async def get_conversation_context(event, client, limit=None):
+async def get_conversation_context(event, client, limit=None, include_current_message=False):
     """Fetch recent messages from the conversation to provide context.
     
     Returns JSON-formatted data containing message details instead of plain text strings.
     JSON format: [{"message_id": 12345, "reply_to": 67890, "timestamp": 1650345600, 
                    "text": "hello", "author": {"user_id": 54321, "username": "username", "name": "Name"},
                    "chat": {"chat_id": 98765, "name": "Group Name"}}]
+    
+    Args:
+        event: The message event
+        client: Telegram client
+        limit: Maximum number of messages to retrieve
+        include_current_message: Whether to include the current message (event) in the context
     """
     if limit is None:
         limit = Config.CONTEXT_MESSAGE_LIMIT
@@ -78,7 +84,8 @@ async def get_conversation_context(event, client, limit=None):
             offset_date=getattr(event, 'date', None),
             reverse=False
         ):
-            if message.id != event.id:
+            # Include the current message only if requested
+            if include_current_message or message.id != event.id:
                 messages.append(message)
             
             if len(messages) >= limit:
@@ -131,6 +138,9 @@ async def get_conversation_context(event, client, limit=None):
                 if hasattr(message.sticker, 'emoji'):
                     media_info["emoji"] = message.sticker.emoji
             
+            # Check if this is the current message
+            is_current_message = (message.id == event.id)
+            
             # Create structured message object
             message_obj = {
                 "message_id": message_id,
@@ -143,7 +153,8 @@ async def get_conversation_context(event, client, limit=None):
                     "username": username,
                     "name": full_name
                 },
-                "chat": chat_info
+                "chat": chat_info,
+                "is_current_message": is_current_message  # Mark if this is the current message
             }
             
             # Add media info if exists
@@ -168,6 +179,46 @@ async def get_conversation_context(event, client, limit=None):
                 }
             
             context.append(message_obj)
+        
+        # If the current message wasn't in the context and we want to include it,
+        # add it manually to ensure it's included
+        if include_current_message and not any(msg.get('message_id') == event.id for msg in context):
+            # Create message object for the current message
+            current_message = event.message
+            
+            # Get sender information for current message
+            sender = await event.get_sender()
+            user_id = getattr(sender, 'id', None)
+            username = getattr(sender, 'username', '')
+            
+            first_name = getattr(sender, 'first_name', '')
+            last_name = getattr(sender, 'last_name', '')
+            full_name = " ".join(filter(None, [first_name, last_name])) if (first_name or last_name) else "Невідоме ім'я"
+            
+            # Get message text or caption
+            text = getattr(current_message, 'text', '')
+            caption = getattr(current_message, 'caption', '')
+            message_text = text or caption or "[Media без тексту]"
+            
+            # Create message object for current message
+            current_msg_obj = {
+                "message_id": getattr(current_message, 'id', None),
+                "reply_to": getattr(current_message, 'reply_to_msg_id', None),
+                "timestamp": int(time.time()),
+                "text": message_text,
+                "type": "text",
+                "author": {
+                    "user_id": user_id,
+                    "username": username,
+                    "name": full_name
+                },
+                "chat": chat_info,
+                "is_current_message": True  # Mark this as the current message
+            }
+            
+            # Add to the end of context
+            context.append(current_msg_obj)
+            logger.info(f"Manually added current message to context")
         
         return context
     except Exception as e:

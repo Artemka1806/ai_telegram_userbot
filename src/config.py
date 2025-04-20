@@ -1,4 +1,5 @@
 import os
+import json
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -17,7 +18,12 @@ class Config:
     # App configuration
     CONTEXT_MESSAGE_LIMIT = int(os.getenv("CONTEXT_MESSAGE_LIMIT", 5))
     
-       # Command prefixes for different modes
+    # Auto-response configuration
+    AUTO_RESPONSE_ENABLED = os.getenv("AUTO_RESPONSE_ENABLED", "true").lower() == "true"
+    AUTO_RESPONSE_CONTEXT_LIMIT = int(os.getenv("AUTO_RESPONSE_CONTEXT_LIMIT", 100))
+    AUTO_RESPONSE_CHATS_FILE = os.path.join("temp", "auto_response_chats.json")
+    
+    # Command prefixes for different modes
     DEFAULT_PREFIX = "."
     HELPFUL_PREFIX = ".h"
     TRANSCRIPTION_PREFIX = ".t"
@@ -54,3 +60,22 @@ class Config:
     # Temp directories
     TEMP_DIR = "temp"
     TEMP_IMAGES_DIR = os.path.join(TEMP_DIR, "images")
+    
+    @staticmethod
+    def get_auto_response_chats():
+        """Get the list of chat IDs where auto-response is enabled"""
+        try:
+            if os.path.exists(Config.AUTO_RESPONSE_CHATS_FILE):
+                with open(Config.AUTO_RESPONSE_CHATS_FILE, 'r') as f:
+                    return json.load(f)
+            else:
+                return []
+        except Exception:
+            return []
+    
+    @staticmethod
+    def save_auto_response_chats(chat_ids):
+        """Save the list of chat IDs where auto-response is enabled"""
+        os.makedirs(os.path.dirname(Config.AUTO_RESPONSE_CHATS_FILE), exist_ok=True)
+        with open(Config.AUTO_RESPONSE_CHATS_FILE, 'w') as f:
+            json.dump(chat_ids, f)
