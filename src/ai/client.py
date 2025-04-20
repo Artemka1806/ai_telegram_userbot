@@ -36,6 +36,67 @@ async def get_history_summary(contents, user_info):
     """Get chat history summary from Google Gemini API."""
     return await _get_gemini_response(contents, user_info, "history")
 
+async def get_reaction_suggestion(message_text, user_info):
+    """Get a suggested reaction for a message.
+    
+    Args:
+        message_text: The text of the message to react to
+        user_info: Information about the user
+        
+    Returns:
+        String: A suggested reaction emoji or None if no reaction is suggested
+    """
+    try:
+        # Prepare the prompt for reaction suggestion
+        prompt = f"""
+### SYSTEM INSTRUCTION
+Analyze this message and suggest an appropriate reaction emoji if warranted.
+If no reaction is needed, respond with "NONE".
+
+### MESSAGE TO ANALYZE
+{message_text}
+
+### GUIDELINES
+- Only suggest a reaction if the message warrants one
+- Choose from common Telegram reactions (👍, ❤️, 🔥, 👏, 😁, 🎉, 🤩, 😱, 😢, 🤬, 🤔, 🙏)
+- For neutral or informational messages, suggest "NONE"
+- For positive messages, use positive reactions (👍, ❤️, 👏, etc.)
+- For surprising or shocking info, use 😱 or 🤩
+- For sad news, use 😢
+- For questions, use 🤔
+- Respond with ONLY the emoji or "NONE", nothing else
+"""
+
+        # Log what we're sending
+        logger.info(f"Sending reaction suggestion request to Gemini model: {Config.GEMINI_MODEL}")
+        logger.info(f"Message to analyze: {message_text[:50]}...")
+        
+        # Send to AI
+        response = client.models.generate_content(
+            model=Config.GEMINI_MODEL,
+            contents=[prompt],
+            config=types.GenerateContentConfig(
+                system_instruction=get_system_instruction(user_info, "default"),
+                max_output_tokens=10,  # We only need a very short response
+                temperature=0.2,  # Lower temperature for more consistent responses
+            )
+        )
+        
+        # Get the result and clean it
+        reaction = response.text.strip()
+        
+        # If the response is "NONE" or not a valid emoji, return None
+        if reaction == "NONE" or len(reaction) > 5:
+            logger.info(f"No reaction suggested for message")
+            return None
+            
+        logger.info(f"Suggested reaction: {reaction}")
+        return reaction
+        
+    except Exception as e:
+        logger.error(f"Error in get_reaction_suggestion: {str(e)}")
+        logger.exception(e)
+        return None
 
 async def get_grounded_response(contents, user_info):
     """Get factual, search-grounded response from Google Gemini API."""

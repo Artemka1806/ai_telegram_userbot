@@ -1,12 +1,15 @@
 import os
+import asyncio
 from src.utils.logger import logger
 from src.config import Config
-from src.ai.client import get_default_response, get_helpful_response, get_transcription_response, get_image_response, get_history_summary, get_summary_response, get_code_response, get_grounded_response, get_file_analysis
+from src.ai.client import get_default_response, get_helpful_response, get_transcription_response, get_image_response, get_history_summary, get_summary_response, get_code_response, get_grounded_response, get_file_analysis, get_reaction_suggestion
 from src.ai.prompts import build_prompt, get_mode_prompt
 from src.telegram.context import get_user_info, get_chat_info, get_conversation_context
 from src.utils.image import process_image, cleanup_resources
 from src.utils.file import process_file
 from google import genai
+from telethon.tl.functions.messages import SendReactionRequest
+from telethon.tl.types import ReactionEmoji
 
 client = genai.Client(api_key=Config.GEMINI_API_KEY)
 
@@ -64,6 +67,35 @@ async def handle_ai_auto_response(event, client):
         me = await client.get_me()
         my_info = await get_user_info(me)
         
+        # Get message text from current message
+        message_text = getattr(event.message, 'text', '') or getattr(event.message, 'caption', '')
+        
+        # Check if we should handle reactions
+        should_add_reaction = Config.AUTO_REACTIONS_ENABLED
+        only_reactions = Config.REACTIONS_WITHOUT_RESPONSE
+        
+        # First check if we should add a reaction to this message
+        if should_add_reaction and message_text:
+            reaction = await get_reaction_suggestion(message_text, my_info)
+            if reaction:
+                try:
+
+                    # Send reaction using Telethon's API
+                    await client(SendReactionRequest(
+                        peer=event.chat_id,
+                        msg_id=event.message.id,
+                        reaction=[ReactionEmoji(emoticon=reaction)]
+                    ))
+                    logger.info(f"Added reaction {reaction} to message in chat {event.chat_id}")
+                except Exception as e:
+                    logger.error(f"Failed to add reaction: {str(e)}")
+        
+        # If reactions-only mode is enabled, don't send a text response
+        if only_reactions:
+            logger.info("Only reactions mode is enabled, skipping text response")
+            return
+        
+
         # Get conversation context with the auto-response context limit
         # Include the current message in the context
         context_limit = Config.AUTO_RESPONSE_CONTEXT_LIMIT
@@ -76,9 +108,6 @@ async def handle_ai_auto_response(event, client):
         
         # Get chat title or default to "Private Chat"
         chat_title = getattr(chat, 'title', None) or 'Private Chat'
-        
-        # Get message text from current message
-        message_text = getattr(event.message, 'text', '') or getattr(event.message, 'caption', '')
         
         # Build prompt for auto-response
         prompt_text = f"""### SYSTEM INSTRUCTION
@@ -138,7 +167,7 @@ User: {sender_info if isinstance(sender_info, str) else sender_info.get('name', 
                     images_to_close.append(img)
                     temp_files_to_remove.append(file_path)
                     logger.info(f"Image processed for auto-response")
-        
+        await asyncio.sleep(0.5)
         try:
             # Send typing indication
             async with client.action(event.chat_id, 'typing'):

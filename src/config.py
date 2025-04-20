@@ -23,6 +23,10 @@ class Config:
     AUTO_RESPONSE_CONTEXT_LIMIT = int(os.getenv("AUTO_RESPONSE_CONTEXT_LIMIT", 100))
     AUTO_RESPONSE_CHATS_FILE = os.path.join("temp", "auto_response_chats.json")
     
+    # Reaction configuration
+    AUTO_REACTIONS_ENABLED = os.getenv("AUTO_REACTIONS_ENABLED", "true").lower() == "true"
+    REACTIONS_WITHOUT_RESPONSE = os.getenv("REACTIONS_WITHOUT_RESPONSE", "false").lower() == "true"
+    
     # Command prefixes for different modes
     DEFAULT_PREFIX = "."
     HELPFUL_PREFIX = ".h"
