@@ -140,7 +140,11 @@ User: {sender_info if isinstance(sender_info, str) else sender_info.get('name', 
                 
                 # Send the response
                 if ai_response.strip():
-                    await event.reply(f"**🤖 {Config.GEMINI_MODEL}**\n{ai_response}")
+                    # Check if the response already contains the model name to avoid duplication
+                    if f"🤖 {Config.GEMINI_MODEL}" in ai_response:
+                        await event.reply(ai_response)
+                    else:
+                        await event.reply(f"**🤖 {Config.GEMINI_MODEL}**\n{ai_response}")
                 else:
                     logger.warning("Empty AI auto-response received")
                 

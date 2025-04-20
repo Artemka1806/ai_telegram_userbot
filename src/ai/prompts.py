@@ -18,6 +18,8 @@ def get_system_instruction(user_info, mode="default"):
     - Only use **another language** if the entire conversation history is in that language.  
     - This rule applies to **all modes**, including code samples (comments should also be in Ukrainian).  
     - **When in doubt, always respond in Ukrainian.**
+
+    If massage contains model's name (for example "🤖 gemini-2.0-flash"), do not use it in the response.
 """
 
     # Mode-specific instructions with strengthened guidance
