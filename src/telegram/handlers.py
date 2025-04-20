@@ -152,7 +152,7 @@ User: {sender_info if isinstance(sender_info, str) else sender_info.get('name', 
 """
         
         # Prepare contents for AI (text and images)
-        logger.info(f"Final prompt: {prompt_text}")
+        logger.info(f"Final prompt: {prompt_text[:0:20]}...")
         contents = [prompt_text]
         images_to_close = []
         temp_files_to_remove = []
