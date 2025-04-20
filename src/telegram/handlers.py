@@ -100,12 +100,18 @@ User: {sender_info if isinstance(sender_info, str) else sender_info.get('name', 
                 if isinstance(msg, dict):
                     author = msg.get('author', {}).get('name', 'Unknown')
                     text = msg.get('text', '')
+                    # Get and format timestamp
+                    timestamp = msg.get('timestamp', 0)
+                    time_str = ""
+                    if timestamp:
+                        from datetime import datetime
+                        time_str = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
                     
                     # Mark the current message that needs a response
                     if msg.get('is_current_message', False):
-                        prompt_text += f"{author}: {text} [THIS IS THE MESSAGE YOU NEED TO RESPOND TO]\n\n"
+                        prompt_text += f"[{time_str}] {author}: {text} [THIS IS THE MESSAGE YOU NEED TO RESPOND TO]\n\n"
                     else:
-                        prompt_text += f"{author}: {text}\n\n"
+                        prompt_text += f"[{time_str}] {author}: {text}\n\n"
         
         # Add explicit instruction to respond to the marked message
         prompt_text += f"""
@@ -117,6 +123,7 @@ User: {sender_info if isinstance(sender_info, str) else sender_info.get('name', 
 """
         
         # Prepare contents for AI (text and images)
+        logger.info(f"Final prompt: {prompt_text}")
         contents = [prompt_text]
         images_to_close = []
         temp_files_to_remove = []
