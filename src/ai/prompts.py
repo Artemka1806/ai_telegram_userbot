@@ -1,3 +1,5 @@
+from src.utils.logger import logger
+
 def get_system_instruction(user_info, mode="default"):
     """Generate the system instruction for the AI model based on mode"""
     
@@ -194,9 +196,6 @@ def get_system_instruction(user_info, mode="default"):
     - Keep the main body of your text completely **free of any source references**.  
     - **Only include sources** in the system-generated **sources section** at the end.  
 
-    🔹 **Sources Section**  
-    - Sources will be provided separately in a **dedicated section** at the end of the response, with **no references** in the main body.  
-
     🚀 **Deliver clear, concise, and well-researched information, ensuring a professional tone throughout.**  
     """
     }
@@ -238,14 +237,19 @@ async def build_prompt(command_text, reply_data=None, conversation_history=None,
     
     elif mode == "summary":
         prompt_text += f"### TASK\nЛИШЕ підсумуй наступний вміст (не відповідай на нього):\n"
-        prompt_text += f"{reply_data.get('text', command_text) or ('Підсумуй наступну розмову:' if conversation_history else 'Немає вмісту для підсумування.')}\n\n"
+        prompt_text += f"{reply_data.get('text', command_text) or ('Підсумуй наступну розмову:' if conversation_history else 'Немає вмісту для підсумовування.')}\n\n"
         
     elif mode == "history":
         prompt_text += f"### TASK\nСтвори детальний хронологічний підсумок історії чату з мітками часу. Не використовуй символ @ перед іменами людей.\n\n"
         if conversation_history:
             prompt_text += "### CHAT HISTORY TO SUMMARIZE\n"
-            for i, msg in enumerate(conversation_history):
-                prompt_text += f"{i+1}. {msg}\n"
+            # Include raw JSON for history mode
+            import json
+            # Add raw JSON format
+            if isinstance(conversation_history, list) and conversation_history and isinstance(conversation_history[0], dict):
+                prompt_text += "```json\n"
+                prompt_text += json.dumps(conversation_history, ensure_ascii=False, indent=2)
+                prompt_text += "\n```\n\n"
             prompt_text += "\n"
         else:
             prompt_text += "Немає історії чату для підсумовування.\n\n"
@@ -281,18 +285,28 @@ async def build_prompt(command_text, reply_data=None, conversation_history=None,
         
         prompt_text += "THIS REPLY CONTEXT IS MOST IMPORTANT. Prioritize addressing it directly.\n\n"
     
-    # Add reply context formatting
+    # Add reply context formatting for JSON
     if reply_context:
         prompt_text += "### CONTEXT OF THE MESSAGE BEING REPLIED TO\n"
-        for i, msg in enumerate(reply_context):
-            prompt_text += f"{i+1}. {msg}\n"
+        
+        # Include raw JSON format for reply context
+        import json
+        if isinstance(reply_context, list) and reply_context and isinstance(reply_context[0], dict):
+            prompt_text += "```json\n"
+            prompt_text += json.dumps(reply_context, ensure_ascii=False, indent=2)
+            prompt_text += "\n```\n\n"
         prompt_text += "\n"
     
     # Add conversation history formatting
     if conversation_history:
         prompt_text += "### CONVERSATION HISTORY (from oldest to newest)\n"
-        for i, msg in enumerate(conversation_history):
-            prompt_text += f"{i+1}. {msg}\n"
+        
+        # Include raw JSON format for conversation history
+        import json
+        if isinstance(conversation_history, list) and conversation_history and isinstance(conversation_history[0], dict):
+            prompt_text += "```json\n"
+            prompt_text += json.dumps(conversation_history, ensure_ascii=False, indent=2)
+            prompt_text += "\n```\n\n"
         prompt_text += "\n"
     
     # Add response format for each mode
@@ -317,7 +331,7 @@ async def build_prompt(command_text, reply_data=None, conversation_history=None,
 
     Response:
     """
-    
+    logger.info(f"Prompt text generated for mode '{mode}': {prompt_text}")
     return prompt_text
 
 

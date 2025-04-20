@@ -335,14 +335,21 @@ async def handle_history_mode(event, client, context_limit):
         
         # DEBUG: Print the actual messages to log
         logger.info(f"Got {len(conversation_history)} messages for history summary")
-        for i, msg in enumerate(conversation_history[:5]):  # Log the first 5 messages
-            logger.info(f"Message {i+1}: {msg[:100]}...")
+        # Log first few messages in JSON format
+        for i, msg in enumerate(conversation_history[:5]):
+            if isinstance(msg, dict):
+                # Format JSON message for logging
+                text_preview = msg.get("text", "")[:100] + "..." if len(msg.get("text", "")) > 100 else msg.get("text", "")
+                logger.info(f"Message {i+1} (JSON): author={msg.get('author', {}).get('name')}, text={text_preview}")
+            else:
+                # Fallback for old string format
+                logger.info(f"Message {i+1}: {msg[:100]}...")
         
         if not conversation_history:
             await thinking_message.edit("❌ Історію чату не знайдено.")
             return
         
-        # Create more explicit Ukrainian prompt
+        # Create more explicit Ukrainian prompt for history summary
         prompt = f"""
 ### SYSTEM INSTRUCTION
 Створи ДЕТАЛЬНИЙ хронологічний підсумок цієї історії чату.
@@ -358,11 +365,9 @@ async def handle_history_mode(event, client, context_limit):
 """
         
         # Add the conversation history with clear formatting
-        for i, msg in enumerate(conversation_history):
-            prompt += f"{i+1}. {msg}\n"
-            
-        logger.info(f"Created history prompt with {len(conversation_history)} messages")
-        
+        # This will use the JSON structure directly
+        # The build_prompt function now handles formatting JSON data
+
         # Call the AI directly
         contents = [prompt]
         ai_response = await get_history_summary(contents, my_info)
