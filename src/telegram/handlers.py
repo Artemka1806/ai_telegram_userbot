@@ -60,11 +60,11 @@ async def handle_ai_command(event, client):
         logger.exception(e)
         await handle_error(event)
 
-async def handle_ai_auto_response(event, client):
+async def handle_ai_auto_response(event, tg_client):
     """Handle automatic AI responses for enabled chats"""
     try:
         # Get user info
-        me = await client.get_me()
+        me = await tg_client.get_me()
         my_info = await get_user_info(me)
         
         # Get message text from current message
@@ -81,7 +81,7 @@ async def handle_ai_auto_response(event, client):
                 try:
 
                     # Send reaction using Telethon's API
-                    await client(SendReactionRequest(
+                    await tg_client(SendReactionRequest(
                         peer=event.chat_id,
                         msg_id=event.message.id,
                         reaction=[ReactionEmoji(emoticon=reaction)]
@@ -99,7 +99,7 @@ async def handle_ai_auto_response(event, client):
         # Get conversation context with the auto-response context limit
         # Include the current message in the context
         context_limit = Config.AUTO_RESPONSE_CONTEXT_LIMIT
-        conversation_history = await get_conversation_context(event, client, context_limit, include_current_message=True)
+        conversation_history = await get_conversation_context(event, tg_client, context_limit, include_current_message=True)
         
         # Get sender and chat info
         sender = await event.get_sender()
@@ -180,7 +180,7 @@ User: {sender_info if isinstance(sender_info, str) else sender_info.get('name', 
                 
                 if pdf_path:
                     try:
-                        # Upload file to Gemini
+                        # Use the global Gemini client, not the telegram client parameter
                         gemini_file = client.files.upload(file=pdf_path)
                         contents.append(gemini_file)
                         temp_files_to_remove.append(file_path)
@@ -194,7 +194,7 @@ User: {sender_info if isinstance(sender_info, str) else sender_info.get('name', 
         await asyncio.sleep(0.5)
         try:
             # Send typing indication
-            async with client.action(event.chat_id, 'typing'):
+            async with tg_client.action(event.chat_id, 'typing'):
                 # Get AI response - use file analysis for documents, default for other content
                 if file_processed:
                     ai_response = await get_file_analysis(contents, my_info)
